@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  googleSheetsService,
-  TeamStats,
-  Player,
-} from "@/services/googleSheetsService";
+  supabaseService,
+  type TeamStats,
+  type Player,
+} from "@/services/supabaseService";
+import { DATA_SYNC_CONFIG } from "@shared/config";
 
 export const useIPLData = () => {
   const {
@@ -14,9 +14,9 @@ export const useIPLData = () => {
     refetch: refetchTeams,
   } = useQuery({
     queryKey: ["teamStats"],
-    queryFn: () => googleSheetsService.getTeamStats(),
-    refetchInterval: 5000, // Refetch every 5 seconds for real-time data
-    staleTime: 15000, // Consider data stale after 15 seconds
+    queryFn: () => supabaseService.getTeamStats(),
+    refetchInterval: DATA_SYNC_CONFIG.homeRefreshInterval,
+    staleTime: DATA_SYNC_CONFIG.cacheTime,
   });
 
   const {
@@ -26,9 +26,9 @@ export const useIPLData = () => {
     refetch: refetchPlayers,
   } = useQuery({
     queryKey: ["players"],
-    queryFn: () => googleSheetsService.getPlayers(),
-    refetchInterval: 5000,
-    staleTime: 15000,
+    queryFn: () => supabaseService.getPlayers(),
+    refetchInterval: DATA_SYNC_CONFIG.homeRefreshInterval,
+    staleTime: DATA_SYNC_CONFIG.cacheTime,
   });
 
   const {
@@ -38,27 +38,27 @@ export const useIPLData = () => {
     refetch: refetchLeaderboard,
   } = useQuery({
     queryKey: ["leaderboard"],
-    queryFn: () => googleSheetsService.getLeaderboard(),
-    refetchInterval: 5000,
-    staleTime: 15000,
+    queryFn: () => supabaseService.getLeaderboard(),
+    refetchInterval: DATA_SYNC_CONFIG.homeRefreshInterval,
+    staleTime: DATA_SYNC_CONFIG.cacheTime,
   });
 
   const getSoldPlayersByTeam = (teamId: string) => {
     return useQuery({
       queryKey: ["soldPlayers", teamId],
-      queryFn: () => googleSheetsService.getSoldPlayersByTeam(teamId),
+      queryFn: () => supabaseService.getSoldPlayersByTeam(teamId),
       enabled: !!teamId,
-      refetchInterval: 5000,
-      staleTime: 15000,
+      refetchInterval: DATA_SYNC_CONFIG.homeRefreshInterval,
+      staleTime: DATA_SYNC_CONFIG.cacheTime,
     });
   };
 
   const getUnsoldPlayers = () => {
     return useQuery({
       queryKey: ["unsoldPlayers"],
-      queryFn: () => googleSheetsService.getUnsoldPlayers(),
-      refetchInterval: 5000,
-      staleTime: 15000,
+      queryFn: () => supabaseService.getUnsoldPlayers(),
+      refetchInterval: DATA_SYNC_CONFIG.homeRefreshInterval,
+      staleTime: DATA_SYNC_CONFIG.cacheTime,
     });
   };
 

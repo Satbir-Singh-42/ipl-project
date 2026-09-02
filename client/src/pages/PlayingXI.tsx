@@ -7,10 +7,10 @@ import { useIPLData } from "@/hooks/useIPLData";
 import { LoadingPage } from "@/components/LoadingPage";
 import NotFound from "@/pages/not-found";
 import {
-  googleSheetsService,
+  supabaseService,
   type Team,
   type Player,
-} from "@/services/googleSheetsService";
+} from "@/services/supabaseService";
 import {
   ArrowLeft,
   ArrowRight,
@@ -60,8 +60,8 @@ const TeamLogo = ({
     );
   } else {
     const displayText =
-      logo === "??" ? googleSheetsService.getTeamInitials(name) : logo;
-    const teamGradient = googleSheetsService.getTeamGradient(name);
+      logo === "??" ? supabaseService.getTeamInitials(name) : logo;
+    const teamGradient = supabaseService.getTeamGradient(name);
     return (
       <motion.div
         className={`aspect-square flex items-center justify-center rounded-full flex-shrink-0 ${teamGradient} text-white font-bold ${sizeClasses[size]} ${className}`}
@@ -157,15 +157,8 @@ export const PlayingXI = () => {
     teamConfig?.id || "",
   );
 
-  // Load Playing XI from localStorage
-  const getStorageKey = (teamId: string) => `playing-xi-${teamId}`;
-  const [playingXI, setPlayingXI] = useState<string[]>(() => {
-    if (teamId) {
-      const stored = localStorage.getItem(getStorageKey(teamId));
-      return stored ? JSON.parse(stored) : [];
-    }
-    return [];
-  });
+  // Playing XI state
+  const [playingXI, setPlayingXI] = useState<string[]>([]);
 
   // Filter and sort states
   const [roleFilter, setRoleFilter] = useState<string>("all");
@@ -173,7 +166,7 @@ export const PlayingXI = () => {
 
   useEffect(() => {
     if (teamId) {
-      googleSheetsService.getTeamConfigs().then((configs) => {
+      supabaseService.getTeamConfigs().then((configs) => {
         const team = configs.find((config) => config.id === teamId);
         if (team) {
           setTeamConfig(team);
@@ -182,13 +175,20 @@ export const PlayingXI = () => {
           setTeamNotFound(true);
         }
       });
+
+      // Load Playing XI from database
+      supabaseService.getPlayingXI(teamId).then((savedXI) => {
+        if (savedXI && savedXI.length > 0) {
+          setPlayingXI(savedXI);
+        }
+      });
     }
   }, [teamId]);
 
-  // Save Playing XI to localStorage whenever it changes
+  // Save Playing XI to database whenever it changes
   useEffect(() => {
-    if (teamId) {
-      localStorage.setItem(getStorageKey(teamId), JSON.stringify(playingXI));
+    if (teamId && playingXI.length > 0) {
+      supabaseService.savePlayingXI(teamId, playingXI);
     }
   }, [playingXI, teamId]);
 
@@ -260,7 +260,7 @@ export const PlayingXI = () => {
     if (!teamConfig || !validation.isValid) return;
 
     // Get team stats for complete data
-    const teamStats = await googleSheetsService.getTeamStats();
+    const teamStats = await supabaseService.getTeamStats();
     const currentTeamStats = teamStats.find(
       (stat) =>
         stat.teamId === teamConfig.id || stat.teamName === teamConfig.name,
@@ -419,8 +419,8 @@ export const PlayingXI = () => {
 
   const composition = getComposition();
   const validation = validateComposition();
-  const teamGradient = googleSheetsService.getTeamGradient(teamConfig.name);
-  const teamBorderColor = googleSheetsService.getTeamBorderColor(
+  const teamGradient = supabaseService.getTeamGradient(teamConfig.name);
+  const teamBorderColor = supabaseService.getTeamBorderColor(
     teamConfig.name,
   );
 

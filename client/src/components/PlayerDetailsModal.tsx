@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Player, googleSheetsService } from '@/services/googleSheetsService';
+import { Player, supabaseService } from '@/services/supabaseService';
 import { formatIndianNumber } from '@/lib/utils';
 
 interface PlayerDetailsModalProps {
@@ -21,7 +21,7 @@ export const PlayerDetailsModal: React.FC<PlayerDetailsModalProps> = ({
   
   // Get team-specific colors if player is sold - only for the circle
   const teamCircleGradient = player.status === 'sold' && player.team 
-    ? googleSheetsService.getTeamGradient(player.team)
+    ? supabaseService.getTeamGradient(player.team)
     : 'bg-white/5';
 
   return (

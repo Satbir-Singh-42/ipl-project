@@ -8,15 +8,16 @@ import { PlayerTable } from "@/components/PlayerTable";
 import { LeaderboardView } from "@/components/LeaderboardView";
 import { GuidelinesView } from "@/components/GuidelinesView";
 import { LoadingPage } from "@/components/LoadingPage";
-import { googleSheetsService, type Team } from "@/services/googleSheetsService";
+import { supabaseService, type Team } from "@/services/supabaseService";
 import { TEAM_CARD_CONFIG } from "@shared/config";
 
 const navigationTabs = [
-  { id: "overview", label: "OVERVIEW", active: true },
-  { id: "sold", label: "SOLD PLAYERS", active: false },
-  { id: "unsold", label: "UNSOLD PLAYERS", active: false },
-  { id: "leaderboard", label: "LEADERBOARD", active: false },
-  { id: "guidelines", label: "GUIDELINES", active: false },
+  { id: "overview", label: "OVERVIEW", isExternal: false },
+  { id: "sold", label: "SOLD PLAYERS", isExternal: false },
+  { id: "unsold", label: "UNSOLD PLAYERS", isExternal: false },
+  { id: "leaderboard", label: "LEADERBOARD", isExternal: false },
+  { id: "guidelines", label: "GUIDELINES", isExternal: false },
+  { id: "auction", label: "AUCTION", isExternal: true },
 ];
 
 // Create a component to display team logo or abbreviation
@@ -30,7 +31,7 @@ const TeamLogo = ({
   className?: string;
 }) => {
   // Import helper to get team initials
-  const { getTeamInitials } = googleSheetsService;
+  const { getTeamInitials } = supabaseService;
   
   // Check if logo is a file path or abbreviation
   const isImageLogo = logo.startsWith("/") || logo.startsWith("http");
@@ -45,7 +46,7 @@ const TeamLogo = ({
   } else {
     // Display team initials instead of ?? if logo is missing
     const displayText = logo === '??' ? getTeamInitials(name) : logo;
-    const teamGradient = googleSheetsService.getTeamGradient(name);
+    const teamGradient = supabaseService.getTeamGradient(name);
     return (
       <div
         className={`w-full h-full aspect-square flex items-center justify-center text-2xl font-bold text-white ${teamGradient} ${className}`}>
@@ -81,12 +82,12 @@ export const PlayerDetailsSection = (): JSX.Element => {
     return leaderboard.map((stat) => ({
       id: stat.teamId,
       name: stat.teamName,
-      logo: googleSheetsService.getTeamLogo(stat.teamName),
+      logo: supabaseService.getTeamLogo(stat.teamName),
       fundsRemaining: stat.fundsRemaining,
       overseasPlayers: stat.overseasCount,
       totalPlayers: stat.playersCount,
-      borderColor: googleSheetsService.getTeamBorderColor(stat.teamName),
-      bgGradient: googleSheetsService.getTeamGradient(stat.teamName),
+      borderColor: supabaseService.getTeamBorderColor(stat.teamName),
+      bgGradient: supabaseService.getTeamGradient(stat.teamName),
     }));
   }, [leaderboard]);
 
@@ -114,6 +115,14 @@ export const PlayerDetailsSection = (): JSX.Element => {
       currency: "INR",
       maximumFractionDigits: 0,
     }).format(amount);
+  };
+
+  const handleTabClick = (tab: { id: string; isExternal: boolean }) => {
+    if (tab.isExternal) {
+      setLocation("/auction");
+      return;
+    }
+    setActiveTab(tab.id);
   };
 
   const handleTeamClick = (teamId: string) => {
@@ -267,6 +276,18 @@ export const PlayerDetailsSection = (): JSX.Element => {
                             </div>
                           </div>
                         </div>
+
+                        {/* Points row */}
+                        <div
+                          className={`flex flex-col items-center pt-2 pb-1 w-full border-t border-solid ${TEAM_CARD_CONFIG.stats.divider} mt-2`}
+                        >
+                          <span className={TEAM_CARD_CONFIG.stats.label}>
+                            Total Points
+                          </span>
+                          <span className="[font-family:'Work_Sans',Helvetica] font-bold text-[#00bcd4] text-lg text-center leading-7">
+                            {teamStat?.totalPoints ?? 0}
+                          </span>
+                        </div>
                       </CardContent>
                     </Card>
                   </motion.div>
@@ -319,7 +340,7 @@ export const PlayerDetailsSection = (): JSX.Element => {
                 aria-label="Primary navigation"
                 role="navigation">
                 <ul
-                  className="flex items-center gap-1 md:gap-2 min-w-max"
+                  className="flex items-center gap-1 md:gap-2 min-w-max pr-1"
                   role="tablist">
                   {navigationTabs.map((tab) => (
                     <li key={tab.id} role="none">
@@ -331,11 +352,13 @@ export const PlayerDetailsSection = (): JSX.Element => {
                           aria-controls={`panel-${tab.id}`}
                           data-testid={`button-tab-${tab.id}`}
                           className={`h-auto px-2 md:px-3 lg:px-4 py-1.5 md:py-2 rounded-full text-xs md:text-sm font-semibold transition-all duration-200 focus-visible:ring-2 focus-visible:ring-[#fe6804] focus-visible:ring-offset-2 focus-visible:ring-offset-[#18184a] whitespace-nowrap ${
-                            activeTab === tab.id
+                            tab.isExternal
+                              ? "bg-[linear-gradient(180deg,rgba(255,107,0,1)_0%,rgba(239,65,35,1)_100%)] text-white hover:opacity-90"
+                              : activeTab === tab.id
                               ? "bg-[linear-gradient(180deg,rgba(255,107,0,1)_0%,rgba(239,65,35,1)_100%)] text-white border-b-2 border-[#fe6804]"
                               : "bg-white/10 border border-[#90b6ff] text-white hover:text-white hover:bg-white/20 hover:border-[#fe6804]/50"
                           }`}
-                          onClick={() => setActiveTab(tab.id)}>
+                          onClick={() => handleTabClick(tab)}>
                           {tab.label}
                         </Button>
                       </div>

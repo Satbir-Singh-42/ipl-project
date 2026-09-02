@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TeamStats, googleSheetsService } from "@/services/googleSheetsService";
+import { TeamStats, supabaseService } from "@/services/supabaseService";
 import { ChevronUp, ChevronDown } from "lucide-react";
 
 interface LeaderboardViewProps {
@@ -41,8 +41,8 @@ const TeamLogo = ({
   } else {
     // Display team initials instead of ?? if logo is missing
     const displayText =
-      logo === "??" ? googleSheetsService.getTeamInitials(name) : logo;
-    const teamGradient = googleSheetsService.getTeamGradient(name);
+      logo === "??" ? supabaseService.getTeamInitials(name) : logo;
+    const teamGradient = supabaseService.getTeamGradient(name);
     return (
       <div
         className={`w-10 h-10 aspect-square flex items-center justify-center rounded-full flex-shrink-0 ${teamGradient} text-white text-sm font-bold ${className}`}>
@@ -61,7 +61,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
 
   // Load team logos asynchronously
   React.useEffect(() => {
-    googleSheetsService.getTeamConfigs().then((configs) => {
+    supabaseService.getTeamConfigs().then((configs) => {
       const logoMap: Record<string, string> = {};
       configs.forEach((config) => {
         logoMap[config.name] = config.logo;

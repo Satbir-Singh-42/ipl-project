@@ -7,9 +7,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AnimatePresence } from "framer-motion";
 import { PageTransition } from "@/components/PageTransition";
 import { LoadingPage } from "@/components/LoadingPage";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import NotFound from "@/pages/not-found";
 
-// Lazy-loaded pages for code splitting
+// Lazy-loaded public pages
 const ElementLight = lazy(() =>
   import("@/pages/ElementLight").then((m) => ({ default: m.ElementLight })),
 );
@@ -24,6 +26,31 @@ const PlayingXI = lazy(() =>
 );
 const AuctionPage = lazy(() => import("@/pages/AuctionPage"));
 
+// Lazy-loaded auth pages
+const LoginPage = lazy(() =>
+  import("@/pages/LoginPage").then((m) => ({ default: m.LoginPage })),
+);
+
+// Lazy-loaded admin pages
+const AdminDashboard = lazy(() =>
+  import("@/pages/admin/AdminDashboard").then((m) => ({
+    default: m.AdminDashboard,
+  })),
+);
+const AdminPlayers = lazy(() =>
+  import("@/pages/admin/AdminPlayers").then((m) => ({
+    default: m.AdminPlayers,
+  })),
+);
+const AdminTeams = lazy(() =>
+  import("@/pages/admin/AdminTeams").then((m) => ({ default: m.AdminTeams })),
+);
+const AdminExport = lazy(() =>
+  import("@/pages/admin/AdminExport").then((m) => ({
+    default: m.AdminExport,
+  })),
+);
+
 function Router() {
   const [location] = useLocation();
 
@@ -32,11 +59,42 @@ function Router() {
       <AnimatePresence mode="wait" initial={false}>
         <PageTransition key={location}>
           <Switch location={location}>
+            {/* Public routes */}
             <Route path="/" component={ElementLight} />
             <Route path="/team" component={TeamsListing} />
             <Route path="/team/:teamId/playing-xi" component={PlayingXI} />
             <Route path="/team/:teamId" component={TeamDashboard} />
-            <Route path="/auction" component={AuctionPage} />
+            <Route path="/login" component={LoginPage} />
+
+            {/* Protected: Auction (admin + auctioneer) */}
+            <Route path="/auction">
+              <ProtectedRoute requiredRole="auctioneer">
+                <AuctionPage />
+              </ProtectedRoute>
+            </Route>
+
+            {/* Protected: Admin (admin only) */}
+            <Route path="/admin">
+              <ProtectedRoute requiredRole="admin">
+                <AdminDashboard />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/admin/players">
+              <ProtectedRoute requiredRole="admin">
+                <AdminPlayers />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/admin/teams">
+              <ProtectedRoute requiredRole="admin">
+                <AdminTeams />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/admin/export">
+              <ProtectedRoute requiredRole="admin">
+                <AdminExport />
+              </ProtectedRoute>
+            </Route>
+
             <Route component={NotFound} />
           </Switch>
         </PageTransition>
@@ -48,10 +106,12 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Router />
+        </TooltipProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

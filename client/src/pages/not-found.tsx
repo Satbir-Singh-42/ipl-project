@@ -18,9 +18,8 @@ export default function NotFound() {
   return (
     <div className="min-h-screen text-white font-['Segoe_UI',sans-serif] relative flex items-center justify-center">
       <div
-        className={`absolute inset-0 w-full h-full bg-cover bg-center transition-opacity duration-500 ${
-          imageLoaded ? "opacity-100" : "opacity-0"
-        }`}
+        className={`absolute inset-0 w-full h-full bg-cover bg-center transition-opacity duration-500 ${imageLoaded ? "opacity-100" : "opacity-0"
+          }`}
         style={{
           backgroundImage: `url(${backgroundImage})`,
           backgroundSize: "cover",
@@ -45,22 +44,21 @@ export default function NotFound() {
             animate={{ scale: 1 }}
             transition={{ duration: 0.5, delay: 0.2 }}
             className="flex flex-col items-center text-center">
-            <AlertCircle className="h-24 w-24 text-red-500 mb-6" />
 
-            <h1 className="text-6xl font-bold text-white mb-4">404</h1>
+            <h1 className="text-6xl font-bold text-[#fe6804] mb-4 tracking-wider">404</h1>
 
-            <h2 className="text-2xl font-bold text-white mb-4">
-              Page Not Found
+            <h2 className="text-2xl font-bold text-white mb-2 uppercase tracking-wide">
+              OUT! Page Not Found
             </h2>
 
-            <p className="text-lg text-white/80 mb-8 max-w-md">
-              The page you're looking for doesn't exist!
+            <p className="text-base text-white/70 mb-8 max-w-md">
+              Looks like you hit the ball out of the stadium. The page you are looking for doesn't exist.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
               <Link href="/">
                 <button
-                  className="flex items-center justify-center gap-2 px-6 py-3 text-base font-bold border-none rounded-xl cursor-pointer transition-all duration-300 shadow-lg hover:scale-105 backdrop-blur-md bg-orange-600/90 hover:bg-orange-700/90 text-white"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 text-sm font-bold border-none rounded-xl cursor-pointer transition-all duration-300 shadow-lg hover:scale-105 backdrop-blur-md bg-gradient-to-r from-[#fe6804] to-[#ef4123] text-white"
                   data-testid="link-home">
                   <Home className="w-5 h-5" />
                   Go to Home
@@ -69,7 +67,7 @@ export default function NotFound() {
 
               <Link href="/auction">
                 <button
-                  className="flex items-center justify-center gap-2 px-6 py-3 text-base font-bold border-none rounded-xl cursor-pointer transition-all duration-300 shadow-lg hover:scale-105 backdrop-blur-md bg-green-600/90 hover:bg-green-700/90 text-white"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 text-sm font-bold border-none rounded-xl cursor-pointer transition-all duration-300 shadow-lg hover:scale-105 backdrop-blur-md bg-gradient-to-r from-[#00bcd4] to-[#0097a7] text-white"
                   data-testid="link-auction">
                   <Trophy className="w-5 h-5" />
                   View Auction

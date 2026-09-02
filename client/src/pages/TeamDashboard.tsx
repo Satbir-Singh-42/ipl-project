@@ -8,7 +8,7 @@ import { PlayerCards } from "@/components/PlayerCards";
 import { useIPLData } from "@/hooks/useIPLData";
 import { LoadingPage } from "@/components/LoadingPage";
 import NotFound from "@/pages/not-found";
-import { googleSheetsService, type Team } from "@/services/googleSheetsService";
+import { supabaseService, type Team } from "@/services/supabaseService";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import {
   AUCTION_CONFIG,
@@ -45,8 +45,8 @@ const TeamLogo = ({
   } else {
     // Display team initials instead of ?? if logo is missing
     const displayText =
-      logo === "??" ? googleSheetsService.getTeamInitials(name) : logo;
-    const teamGradient = googleSheetsService.getTeamGradient(name);
+      logo === "??" ? supabaseService.getTeamInitials(name) : logo;
+    const teamGradient = supabaseService.getTeamGradient(name);
     return (
       <motion.div
         className={`w-16 h-16 md:w-20 md:h-20 aspect-square flex items-center justify-center rounded-full flex-shrink-0 ${teamGradient} text-white text-lg md:text-xl font-bold ${className}`}
@@ -101,7 +101,7 @@ export const TeamDashboard = () => {
 
   useEffect(() => {
     if (teamId) {
-      googleSheetsService.getTeamConfigs().then((configs) => {
+      supabaseService.getTeamConfigs().then((configs) => {
         const team = configs.find((config) => config.id === teamId);
         if (team) {
           setTeamConfig(team);
@@ -116,7 +116,7 @@ export const TeamDashboard = () => {
   useEffect(() => {
     // Calculate team rank when teamStats and teamConfig are available
     if (teamStats && teamConfig) {
-      googleSheetsService.getLeaderboard().then((leaderboard) => {
+      supabaseService.getLeaderboard().then((leaderboard) => {
         const teamIndex = leaderboard.findIndex(
           (team) => team.teamId === teamConfig.id
         );
@@ -147,8 +147,8 @@ export const TeamDashboard = () => {
 
   const teamStat = teamStats?.find((stat) => stat.teamId === teamConfig.id);
   const teamPlayers = soldPlayers || [];
-  const teamGradient = googleSheetsService.getTeamGradient(teamConfig.name);
-  const teamBorderColor = googleSheetsService.getTeamBorderColor(
+  const teamGradient = supabaseService.getTeamGradient(teamConfig.name);
+  const teamBorderColor = supabaseService.getTeamBorderColor(
     teamConfig.name
   );
   const startingBudget = teamStat?.startingBudget || 100000;
@@ -216,7 +216,7 @@ export const TeamDashboard = () => {
                 onClick={async () => {
                   setIsRefreshing(true);
                   try {
-                    googleSheetsService.clearCache();
+                    supabaseService.clearCache();
                     refreshAllData();
                     // Also refresh the team-specific sold players data
                     if (teamConfig?.id) {

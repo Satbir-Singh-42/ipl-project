@@ -1,0 +1,115 @@
+import { useState } from "react";
+import { motion } from "framer-motion";
+import { useLocation } from "wouter";
+import { useAuth } from "@/contexts/AuthContext";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
+
+export function LoginPage() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { login, isAuthenticated, role } = useAuth();
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+
+  // Redirect if already logged in
+  if (isAuthenticated) {
+    setLocation(role === "admin" ? "/admin" : "/");
+    return null;
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) {
+      toast({ title: "Email and password are required", variant: "destructive" });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await login(email, password);
+      toast({ title: "Login successful" });
+      // AuthContext will update role, redirect handled above on next render
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Login failed";
+      toast({ title: message, variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#0f1629] text-white flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="w-full max-w-md"
+      >
+        <Card className="bg-gradient-to-br from-[#1a1f3a]/90 to-[#0a0e1a]/90 border-[#90b6ff]/20 shadow-2xl">
+          <CardHeader className="text-center space-y-4 pb-2">
+            <div className="mx-auto">
+              <img
+                src="/IPL-logo.png"
+                alt="IPL Logo"
+                className="w-20 h-20 object-contain mx-auto"
+              />
+            </div>
+            <CardTitle className="text-2xl font-bold text-white">
+              IPL Auction 2025
+            </CardTitle>
+            <p className="text-white/50 text-sm">
+              Admin and Auctioneer Login
+            </p>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-white/60 text-xs font-semibold mb-1.5">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="admin@example.com"
+                  className="w-full px-4 py-2.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-[#fe6804]/50 focus:border-[#fe6804]/50"
+                  autoComplete="email"
+                />
+              </div>
+              <div>
+                <label className="block text-white/60 text-xs font-semibold mb-1.5">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter password"
+                  className="w-full px-4 py-2.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-[#fe6804]/50 focus:border-[#fe6804]/50"
+                  autoComplete="current-password"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full py-2.5 rounded-lg bg-gradient-to-r from-[#fe6804] to-[#ef4123] text-white text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {isSubmitting ? "Signing in..." : "Sign In"}
+              </button>
+            </form>
+            <div className="mt-6 text-center">
+              <button
+                onClick={() => setLocation("/")}
+                className="text-white/40 text-xs hover:text-white/60 transition-colors"
+              >
+                Back to Public View
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+    </div>
+  );
+}

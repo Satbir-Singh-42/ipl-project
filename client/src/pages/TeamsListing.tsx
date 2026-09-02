@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useIPLData } from '@/hooks/useIPLData';
 import { LoadingPage } from '@/components/LoadingPage';
-import { googleSheetsService, type Team } from '@/services/googleSheetsService';
+import { supabaseService, type Team } from '@/services/supabaseService';
 import { ArrowLeft } from 'lucide-react';
 import { formatIndianNumber } from '@/lib/utils';
 
@@ -22,8 +22,8 @@ const TeamLogo = ({ logo, name, className = "" }: { logo: string; name: string; 
     );
   } else {
     // Display team initials instead of ?? if logo is missing
-    const displayText = logo === '??' ? googleSheetsService.getTeamInitials(name) : logo;
-    const teamGradient = googleSheetsService.getTeamGradient(name);
+    const displayText = logo === '??' ? supabaseService.getTeamInitials(name) : logo;
+    const teamGradient = supabaseService.getTeamGradient(name);
     return (
       <div className={`w-full h-full aspect-square flex items-center justify-center text-2xl font-bold text-white ${teamGradient} ${className}`}>
         {displayText}
@@ -38,7 +38,7 @@ export const TeamsListing = () => {
   const { teamStats, isLoading, error } = useIPLData();
 
   useEffect(() => {
-    googleSheetsService.getTeamConfigs().then(setTeamConfigs);
+    supabaseService.getTeamConfigs().then(setTeamConfigs);
   }, []);
 
   const handleTeamClick = (teamId: string) => {
@@ -90,7 +90,7 @@ export const TeamsListing = () => {
         {/* Teams Grid */}
         {teamConfigs.length === 0 ? (
           <div className="flex items-center justify-center h-32">
-            <div className="text-wwwiplt-2-0comwhite text-lg">Loading teams from Google Sheets...</div>
+            <div className="text-wwwiplt-2-0comwhite text-lg">Loading teams...</div>
           </div>
         ) : (
           <main className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-4 sm:gap-6 content-start">

@@ -7,17 +7,19 @@
  * Modify values here to customize the application behavior.
  * 
  * FEATURES OVERVIEW:
- * ✅ Real-time auction data from Google Sheets
- * ✅ Interactive auction page with player viewer
- * ✅ Mobile-only tap to increment (≤768px)
- * ✅ Keyboard shortcuts and touch gestures
- * ✅ Automatic data sync (5s home / 60s auction)
- * ✅ Team rankings and leaderboards
- * ✅ Playing XI selection with validation
- * ✅ Celebration animations (confetti on sold)
- * ✅ Undo functionality
- * ✅ Local storage persistence
- * ✅ Fully responsive design
+ * - Real-time auction data via Supabase Realtime
+ * - Interactive auction page with player viewer
+ * - Mobile-only tap to increment (<=768px)
+ * - Keyboard shortcuts and touch gestures
+ * - Automatic data sync via Supabase subscriptions
+ * - Team rankings and leaderboards
+ * - Playing XI selection with validation
+ * - Celebration animations (confetti on sold)
+ * - Undo functionality
+ * - Database persistence via Supabase
+ * - Fully responsive design
+ * - Admin panel for player/team management
+ * - Role-based access (admin, auctioneer, public)
  */
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -95,11 +97,33 @@ export const AUCTION_CONFIG = {
   bidIncrement: 100000,
 
   /**
+   * Default team starting budget (INR)
+   * Default: 10,000,000 (1 Crore)
+   * 
+   * Used when:
+   * - Seeding new teams in the database
+   * - Resetting all team budgets in admin panel
+   * - Displaying budget defaults in the UI
+   */
+  defaultTeamBudget: 10000000,
+
+  /**
+   * Default player base price (INR)
+   * Default: 400,000 (4 Lakh)
+   * 
+   * Used when:
+   * - Adding new players without a specified base price
+   * - Bulk importing players with missing price data
+   * - Database default column value
+   */
+  defaultBasePrice: 400000,
+
+  /**
    * UI Labels (Template Strings)
    * Use {max}, {count}, {min} as placeholders
    */
   squadSizeLabel: "Squad Size: Max {max} players",
-  qualificationLabel: "🏆 Qualification: Top {count} teams advance",
+  qualificationLabel: "Qualification: Top {count} teams advance",
   minPlayersLabel: "Min: {min} players required",
 };
 
@@ -199,28 +223,21 @@ export const PLAYING_XI_CONFIG = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Google Sheets Auto-Refresh Intervals
+ * Data Sync Configuration
  * 
  * FEATURE: Real-time Data Synchronization
- * - Direct Google Sheets integration (no backend database)
- * - CSV export URLs with Papa Parse
- * - Smart client-side caching
- * - Automatic background refresh
+ * - Supabase Realtime subscriptions for instant updates
+ * - React Query for client-side caching
+ * - Fallback polling intervals if Realtime unavailable
  * - Manual sync with 'Z' key
- * - Expected 400 errors during sheet discovery (normal behavior)
  */
 export const DATA_SYNC_CONFIG = {
   /**
    * Homepage data refresh interval (milliseconds)
    * Default: 5000 (5 seconds)
    * 
-   * Pages affected:
-   * - Homepage (team cards, rankings)
-   * - Leaderboard
-   * - Sold Players
-   * - Unsold Players
-   * 
-   * Faster refresh for live monitoring
+   * Used as fallback polling when Supabase Realtime is active.
+   * With Realtime enabled, updates are pushed instantly.
    */
   homeRefreshInterval: 5000,
 
@@ -228,29 +245,22 @@ export const DATA_SYNC_CONFIG = {
    * Auction page refresh interval (milliseconds)
    * Default: 60000 (60 seconds)
    * 
-   * Pages affected:
-   * - Auction Page (player viewer)
-   * 
-   * Slower refresh to prevent disruption during active bidding
-   * Manual sync available with 'Z' keyboard shortcut
+   * Slower fallback polling for auction page.
+   * Actual updates arrive instantly via Supabase Realtime.
    */
   auctionRefreshInterval: 60000,
 
   /**
-   * TanStack Query cache time (milliseconds)
+   * TanStack Query stale time (milliseconds)
    * Default: 5000 (5 seconds)
    * 
-   * How long data is considered "fresh" before refetch
-   * Stale-while-revalidate strategy
+   * How long data is considered "fresh" before refetch.
    */
   cacheTime: 5000,
 
   /**
    * Enable/disable auto-sync
    * Default: true
-   * 
-   * Set to false to disable automatic background sync
-   * Manual sync always available with 'Z' key
    */
   autoSync: true,
 };

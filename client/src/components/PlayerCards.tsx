@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Player, googleSheetsService } from '@/services/googleSheetsService';
+import { Player, supabaseService } from '@/services/supabaseService';
 import { PlayerDetailsModal } from './PlayerDetailsModal';
 import { Plane } from 'lucide-react';
 
@@ -20,7 +20,7 @@ const PlayerCard = ({ player, onClick }: { player: Player; onClick: () => void }
   
   // Get team gradient for the player circle
   const teamGradient = player.status === 'sold' && player.team 
-    ? googleSheetsService.getTeamGradient(player.team)
+    ? supabaseService.getTeamGradient(player.team)
     : 'bg-gray-800';
   
   return (

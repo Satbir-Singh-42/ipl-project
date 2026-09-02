@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+
 const stadiumImage = "/images/backgrounds/stadium-bg.png";
 
 export const LoadingPage = (): JSX.Element => {
@@ -48,3 +49,5 @@ export const LoadingPage = (): JSX.Element => {
     </div>
   );
 };
+
+

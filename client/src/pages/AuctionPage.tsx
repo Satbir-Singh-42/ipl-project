@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useIPLData } from "@/hooks/useIPLData";
-import type { Player } from "@/services/googleSheetsService";
+import type { Player } from "@/services/supabaseService";
 import confetti from "canvas-confetti";
 import {
   Trophy,
@@ -108,27 +108,20 @@ export default function AuctionPage() {
 
   useEffect(() => {
     if (players && players.length > 0) {
-      // Load unsold player names from localStorage
-      const saved = localStorage.getItem("auctionPageState");
-      let savedUnsoldNames = new Set<string>();
-      if (saved) {
-        try {
-          const state = JSON.parse(saved);
-          savedUnsoldNames = new Set(state.unsoldPlayerNames || []);
-        } catch (e) {
-          // ignore corrupted state
-        }
-      }
+      // Derive unsold player names from player status
+      const initialUnsoldNames = new Set(
+        players.filter((p) => p.status === "unsold").map((p) => p.name),
+      );
 
-      setUnsoldPlayerNames(savedUnsoldNames);
+      setUnsoldPlayerNames(initialUnsoldNames);
 
-      // Build active/sold from fresh sheet data, applying unsold flags from Set
+      // Build active/sold from fresh data, applying unsold flags
       const active: Player[] = [];
       const sold: Player[] = [];
       const sheetSoldNames = new Set<string>();
 
       players.forEach((player) => {
-        const isMarkedUnsold = savedUnsoldNames.has(player.name);
+        const isMarkedUnsold = player.status === "unsold" || initialUnsoldNames.has(player.name);
         const playerWithUnsold = { ...player, isUnsold: isMarkedUnsold };
 
         if (player.status === "sold") {
@@ -146,17 +139,6 @@ export default function AuctionPage() {
       setIsPageReady(true);
     }
   }, [players]);
-
-  useEffect(() => {
-    if (!players || players.length === 0) return;
-
-    localStorage.setItem(
-      "auctionPageState",
-      JSON.stringify({
-        unsoldPlayerNames: Array.from(unsoldPlayerNames),
-      }),
-    );
-  }, [unsoldPlayerNames, players]);
 
   const filterPlayer = (player: Player, search: string) => {
     return (
@@ -485,7 +467,7 @@ export default function AuctionPage() {
   };
 
   const confirmReset = () => {
-    localStorage.removeItem("auctionPageState");
+    setUnsoldPlayerNames(new Set());
     window.location.reload();
   };
 
@@ -1240,8 +1222,8 @@ export default function AuctionPage() {
                         Reset Auction View?
                       </h3>
                       <p className="text-white/80 text-sm leading-relaxed">
-                        All unsold players and non-synced sold data will be
-                        permanently deleted. Only Google Sheet data will remain.
+                        All local auction state will be reset.
+                        Database records will not be affected.
                       </p>
                     </div>
                     <button
