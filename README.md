@@ -188,7 +188,6 @@ npm run dev
 │   │   │   ├── TeamDashboard.tsx    # Individual team details page
 │   │   │   └── TeamsListing.tsx     # All teams overview
 │   │   ├── services/                # External service integrations
-│   │   │   └── googleSheetsService.ts  # Google Sheets CSV fetching & parsing
 │   │   ├── App.tsx                  # Main app with routing (Wouter)
 │   │   ├── index.css                # Global styles & Tailwind config
 │   │   └── main.tsx                 # React app entry point
@@ -424,14 +423,6 @@ Failed to load resource: the server responded with a status of 400
 
 **Note**: The Google Sheets structure and configuration will be provided separately. The application requires properly formatted sheets for Teams & Budget, Players Catalogue, and Auctioneer data.
 
-#### Sheet Permissions
-
-For the application to fetch data:
-1. Open your Google Sheet → Share
-2. Set to "Anyone with the link can view"
-3. Ensure CSV export is enabled (default for public sheets)
-4. Copy the spreadsheet ID from the URL
-5. Update the ID in `client/src/services/googleSheetsService.ts`
 
 **Important**: The service automatically handles multiple sheet formats and will attempt various GID values to locate the correct data. You may see expected 400 errors in the console during this discovery process.
 
@@ -505,8 +496,6 @@ CSV Export URLs
        ↓
 Papa Parse (Parser)
        ↓
-googleSheetsService.ts (Transform)
-       ↓
 TanStack Query (Cache - 5s home / 60s auction)
        ↓
 React Components (Display)
@@ -545,8 +534,7 @@ We welcome contributions! Here's how:
 
 This application runs entirely on the frontend and does not require environment variables for basic operation. All configuration is done through:
 
-- **Google Sheets Integration**: Spreadsheet ID configured in `client/src/services/googleSheetsService.ts`
-- **Auction Rules**: Configured in `shared/config.ts`
+-- **Auction Rules**: Configured in `shared/config.ts`
 - **Team Branding**: Configured in `client/src/config/teamBranding.ts`
 
 ### Optional Environment Variables

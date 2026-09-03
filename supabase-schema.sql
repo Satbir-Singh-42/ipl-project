@@ -6,11 +6,23 @@
 -- =====================================================
 
 
--- 1. PLAYERS TABLE
+-- 1. POOLS TABLE (Auction Sets & Rounds)
+CREATE TABLE IF NOT EXISTS pools (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name TEXT NOT NULL,
+  order_index INTEGER NOT NULL DEFAULT 1,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pools_order ON pools(order_index);
+
+-- 2. PLAYERS TABLE
 -- Stores all player data (replaces Players Catalogue + Auctioneer Sheet)
 CREATE TABLE IF NOT EXISTS players (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  sr_no INTEGER,
+  pool_id BIGINT REFERENCES pools(id) ON DELETE SET NULL,
+  auction_order INTEGER DEFAULT 0,
   name TEXT NOT NULL,
   age INTEGER,
   country TEXT DEFAULT 'India',
@@ -31,12 +43,18 @@ CREATE TABLE IF NOT EXISTS players (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_players_status ON players(status);
-CREATE INDEX idx_players_sold_to_team ON players(sold_to_team);
-CREATE INDEX idx_players_name ON players(name);
+-- Ensure columns exist if table was already created
+ALTER TABLE players ADD COLUMN IF NOT EXISTS pool_id BIGINT REFERENCES pools(id) ON DELETE SET NULL;
+ALTER TABLE players ADD COLUMN IF NOT EXISTS auction_order INTEGER DEFAULT 0;
+
+CREATE INDEX IF NOT EXISTS idx_players_pool_id ON players(pool_id);
+CREATE INDEX IF NOT EXISTS idx_players_auction_order ON players(auction_order);
+CREATE INDEX IF NOT EXISTS idx_players_status ON players(status);
+CREATE INDEX IF NOT EXISTS idx_players_sold_to_team ON players(sold_to_team);
+CREATE INDEX IF NOT EXISTS idx_players_name ON players(name);
 
 
--- 2. TEAMS TABLE
+-- 3. TEAMS TABLE
 CREATE TABLE IF NOT EXISTS teams (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
@@ -134,6 +152,8 @@ CREATE POLICY "Authenticated users can insert teams"
   ON teams FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "Authenticated users can update teams"
   ON teams FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated users can delete teams"
+  ON teams FOR DELETE TO authenticated USING (true);
 
 -- Auction log: public read, authenticated insert
 CREATE POLICY "Auction log is viewable by everyone"
@@ -155,10 +175,82 @@ CREATE POLICY "Anyone can update playing XI"
 CREATE POLICY "Anyone can delete playing XI"
   ON playing_xi FOR DELETE USING (true);
 
+-- POOLS RLS POLICIES
+ALTER TABLE pools ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Public pools view" ON pools;
+CREATE POLICY "Public pools view"
+  ON pools FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can insert pools" ON pools;
+CREATE POLICY "Authenticated users can insert pools"
+  ON pools FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Authenticated users can update pools" ON pools;
+CREATE POLICY "Authenticated users can update pools"
+  ON pools FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can delete pools" ON pools;
+CREATE POLICY "Authenticated users can delete pools"
+  ON pools FOR DELETE TO authenticated USING (true);
+
 
 -- ENABLE REALTIME
 ALTER PUBLICATION supabase_realtime ADD TABLE players;
 ALTER PUBLICATION supabase_realtime ADD TABLE teams;
+ALTER PUBLICATION supabase_realtime ADD TABLE pools;
+
+
+-- =====================================================
+-- 6. SUPABASE STORAGE BUCKETS (Player Images & Team Logos)
+-- =====================================================
+INSERT INTO storage.buckets (id, name, public)
+VALUES 
+  ('player-images', 'player-images', true),
+  ('team-logos', 'team-logos', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+-- Storage RLS Policies: Public View Access
+DROP POLICY IF EXISTS "Public player images access" ON storage.objects;
+CREATE POLICY "Public player images access"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'player-images');
+
+DROP POLICY IF EXISTS "Public team logos access" ON storage.objects;
+CREATE POLICY "Public team logos access"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'team-logos');
+
+-- Storage RLS Policies: Authenticated Write Access
+DROP POLICY IF EXISTS "Authenticated users can upload player images" ON storage.objects;
+CREATE POLICY "Authenticated users can upload player images"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'player-images');
+
+DROP POLICY IF EXISTS "Authenticated users can update player images" ON storage.objects;
+CREATE POLICY "Authenticated users can update player images"
+  ON storage.objects FOR UPDATE TO authenticated
+  USING (bucket_id = 'player-images');
+
+DROP POLICY IF EXISTS "Authenticated users can delete player images" ON storage.objects;
+CREATE POLICY "Authenticated users can delete player images"
+  ON storage.objects FOR DELETE TO authenticated
+  USING (bucket_id = 'player-images');
+
+DROP POLICY IF EXISTS "Authenticated users can upload team logos" ON storage.objects;
+CREATE POLICY "Authenticated users can upload team logos"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'team-logos');
+
+DROP POLICY IF EXISTS "Authenticated users can update team logos" ON storage.objects;
+CREATE POLICY "Authenticated users can update team logos"
+  ON storage.objects FOR UPDATE TO authenticated
+  USING (bucket_id = 'team-logos');
+
+DROP POLICY IF EXISTS "Authenticated users can delete team logos" ON storage.objects;
+CREATE POLICY "Authenticated users can delete team logos"
+  ON storage.objects FOR DELETE TO authenticated
+  USING (bucket_id = 'team-logos');
 
 
 -- SEED: 12 TEAMS (with branding from teamBranding.ts)

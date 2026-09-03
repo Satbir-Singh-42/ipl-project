@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useIPLData } from "@/hooks/useIPLData";
-import type { Player } from "@/services/supabaseService";
+import { supabaseService, type Player, type Pool } from "@/services/supabaseService";
 import confetti from "canvas-confetti";
 import {
   Trophy,
@@ -12,12 +12,14 @@ import {
   Home,
   AlertTriangle,
   X,
+  Layers,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { AUCTION_CONFIG } from "@shared/config";
 import { useToast } from "@/hooks/use-toast";
 import { LoadingPage } from "@/components/LoadingPage";
+import { AdminHeader } from "@/components/AdminHeader";
 import { formatIndianNumber } from "@/lib/utils";
 
 const backgroundImage = "/images/auction/background.png";
@@ -37,12 +39,13 @@ function PlayerImage({
     .split(" ")
     .map((n) => n[0])
     .join("")
+    .slice(0, 2)
     .toUpperCase();
 
-  if (!src || failed) {
+  if (failed || !src) {
     return (
       <div
-        className={`w-full h-full flex items-center justify-center text-3xl font-bold text-white ${className}`}>
+        className={`w-full h-full flex items-center justify-center bg-gray-800 text-white font-bold text-xs sm:text-sm ${className}`}>
         {initials}
       </div>
     );
@@ -61,9 +64,11 @@ function PlayerImage({
 }
 
 export default function AuctionPage() {
-  const { players, refetchPlayers } = useIPLData();
+  const { players, isLoadingPlayers, refetchPlayers } = useIPLData();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const [pools, setPools] = useState<Pool[]>([]);
+  const [selectedPoolTab, setSelectedPoolTab] = useState<number | "all">("all");
   const [activeCards, setActiveCards] = useState<Player[]>([]);
   const [soldCards, setSoldCards] = useState<Player[]>([]);
   const [soldFromSheetNames, setSoldFromSheetNames] = useState<Set<string>>(
@@ -89,6 +94,10 @@ export default function AuctionPage() {
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
+    supabaseService.getPools().then(setPools).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.matchMedia("(max-width: 768px)").matches);
     };
@@ -107,38 +116,49 @@ export default function AuctionPage() {
   }, []);
 
   useEffect(() => {
-    if (players && players.length > 0) {
-      // Derive unsold player names from player status
-      const initialUnsoldNames = new Set(
-        players.filter((p) => p.status === "unsold").map((p) => p.name),
-      );
+    const initAuctionPlayers = async () => {
+      if (players && players.length > 0) {
+        // Fetch players that were ACTUALLY marked unsold during an auction session
+        const actualUnsoldNames = await supabaseService.getUnsoldPlayerNames();
+        setUnsoldPlayerNames(actualUnsoldNames);
 
-      setUnsoldPlayerNames(initialUnsoldNames);
+        // Build active/sold from fresh data, applying unsold flags
+        const active: Player[] = [];
+        const sold: Player[] = [];
+        const sheetSoldNames = new Set<string>();
 
-      // Build active/sold from fresh data, applying unsold flags
-      const active: Player[] = [];
-      const sold: Player[] = [];
-      const sheetSoldNames = new Set<string>();
+        players.forEach((player) => {
+          const isMarkedUnsold = actualUnsoldNames.has(player.name);
+          const playerWithUnsold = { ...player, isUnsold: isMarkedUnsold };
 
-      players.forEach((player) => {
-        const isMarkedUnsold = player.status === "unsold" || initialUnsoldNames.has(player.name);
-        const playerWithUnsold = { ...player, isUnsold: isMarkedUnsold };
+          if (player.status === "sold" && (player.soldPrice || 0) > 0) {
+            sold.push(playerWithUnsold);
+            sheetSoldNames.add(player.name);
+          } else {
+            active.push(playerWithUnsold);
+          }
+        });
 
-        if (player.status === "sold") {
-          sold.push(playerWithUnsold);
-          sheetSoldNames.add(player.name);
-        } else {
-          active.push(playerWithUnsold);
-        }
-      });
+        // Sort active players according to pools sequence and auctionOrder
+        const poolOrderMap = new Map<number, number>();
+        pools.forEach((p, idx) => poolOrderMap.set(p.id, p.orderIndex ?? idx));
 
-      setActiveCards(active);
-      setSoldCards(sold);
-      setSoldFromSheetNames(sheetSoldNames);
-      setUnsoldCount(active.filter((p) => p.isUnsold).length);
-      setIsPageReady(true);
-    }
-  }, [players]);
+        active.sort((a, b) => {
+          const orderA = a.poolId ? poolOrderMap.get(a.poolId) ?? 9999 : 99999;
+          const orderB = b.poolId ? poolOrderMap.get(b.poolId) ?? 9999 : 99999;
+          if (orderA !== orderB) return orderA - orderB;
+          return (a.auctionOrder || 0) - (b.auctionOrder || 0);
+        });
+
+        setActiveCards(active);
+        setSoldCards(sold);
+        setSoldFromSheetNames(sheetSoldNames);
+        setUnsoldCount(active.filter((p) => p.isUnsold).length);
+        setIsPageReady(true);
+      }
+    };
+    initAuctionPlayers();
+  }, [players, pools]);
 
   const filterPlayer = (player: Player, search: string) => {
     return (
@@ -149,7 +169,12 @@ export default function AuctionPage() {
     );
   };
 
-  const filteredCards = activeCards.filter((player) =>
+  const poolFilteredActiveCards = activeCards.filter((player) => {
+    if (selectedPoolTab === "all") return true;
+    return player.poolId === selectedPoolTab;
+  });
+
+  const filteredCards = poolFilteredActiveCards.filter((player) =>
     filterPlayer(player, searchTerm.toLowerCase()),
   );
 
@@ -260,6 +285,11 @@ export default function AuctionPage() {
     if (!currentPlayer) return;
 
     setShowUnsoldStamp(true);
+
+    // Record in database auction log
+    supabaseService.markPlayerUnsold(currentPlayer.name).catch((err) => {
+      console.error("Failed to mark player unsold:", err);
+    });
 
     // Add player to unsold Set
     const newUnsoldNames = new Set(unsoldPlayerNames);
@@ -618,8 +648,49 @@ export default function AuctionPage() {
     currentBid,
   ]);
 
-  if (!players || players.length === 0) {
+  if (isLoadingPlayers || !players) {
     return <LoadingPage />;
+  }
+
+  if (players.length === 0) {
+    return (
+      <div className="bg-[#18184a] w-full min-h-screen text-white flex flex-col">
+        <AdminHeader activeTab="auction" title="Player Auction" />
+        <section className="w-full flex-1 flex items-center justify-center p-4 sm:p-6 md:p-8">
+          <div className="w-full max-w-2xl bg-wwwiplt20comconcrete-80 rounded-[16px] md:rounded-[22.47px] backdrop-blur-[28.09px] p-6 sm:p-10 shadow-2xl text-center space-y-5 border border-white/10">
+            <div className="w-16 h-16 mx-auto rounded-full bg-[#fe6804]/15 border border-[#fe6804]/40 flex items-center justify-center">
+              <Users className="w-8 h-8 text-[#fe6804]" />
+            </div>
+            <h2 className="[font-family:'Work_Sans',Helvetica] text-2xl sm:text-3xl font-bold text-[#18184a]">
+              No Players in Auction
+            </h2>
+            <p className="text-[#18184a]/75 text-sm sm:text-base max-w-md mx-auto">
+              There are currently no players in the catalogue database. You can add players manually or bulk import via CSV from the Admin Panel to begin the auction.
+            </p>
+            <div className="flex flex-wrap justify-center gap-3 pt-3">
+              <button
+                onClick={() => setLocation("/admin/players")}
+                className="px-5 py-2.5 rounded-full bg-[linear-gradient(180deg,rgba(255,107,0,1)_0%,rgba(239,65,35,1)_100%)] text-white text-sm font-bold shadow-lg hover:opacity-95 transition-opacity"
+              >
+                Manage Players (Upload CSV)
+              </button>
+              <button
+                onClick={() => setLocation("/admin")}
+                className="px-5 py-2.5 rounded-full bg-[#18184a] text-white text-sm font-bold shadow-md hover:bg-[#18184a]/90 transition-colors"
+              >
+                Admin Dashboard
+              </button>
+              <button
+                onClick={() => setLocation("/")}
+                className="px-5 py-2.5 rounded-full bg-white text-[#18184a] border border-[#18184a]/20 text-sm font-bold shadow-sm hover:bg-slate-100 transition-colors"
+              >
+                Public View
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
   }
 
   const SoldPlayerCard = ({
@@ -732,20 +803,22 @@ export default function AuctionPage() {
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: isPageReady ? 0 : 20, opacity: isPageReady ? 1 : 0 }}
         transition={{ duration: 0.6, delay: 0.1 }}>
+        <AdminHeader activeTab="auction" title="Player Auction" />
+
         <div
-          className="fixed top-2 right-2 sm:top-3 sm:right-3 backdrop-blur-xl bg-black/20 px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg shadow-lg border border-white/20 z-[10001] text-xs sm:text-sm font-semibold"
+          className="fixed top-20 right-2 sm:top-20 sm:right-3 backdrop-blur-xl bg-black/40 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg shadow-xl border border-white/20 z-[10001] text-xs sm:text-sm font-semibold"
           data-testid="stats-counter">
-          <div className="flex flex-col sm:flex-row gap-1 sm:gap-0">
-            <span className="text-green-400 sm:mx-2">
-              A: <span data-testid="active-count">{activeCards.length}</span>
+          <div className="flex flex-col sm:flex-row gap-1 sm:gap-0 items-center">
+            <span className="text-green-400 sm:mx-2 font-bold">
+              POOL: <span data-testid="active-count">{activeCards.length}</span>
             </span>
-            <span className="text-white mx-1 hidden sm:inline">|</span>
-            <span className="text-blue-400 sm:mx-2">
-              S: <span data-testid="sold-count">{soldCards.length}</span>
+            <span className="text-white/40 mx-1 hidden sm:inline">•</span>
+            <span className="text-[#00BCD4] sm:mx-2 font-bold">
+              SOLD: <span data-testid="sold-count">{soldCards.length}</span>
             </span>
-            <span className="text-white mx-1 hidden sm:inline">|</span>
-            <span className="text-red-400 sm:mx-2">
-              U: <span data-testid="unsold-count">{unsoldCount}</span>
+            <span className="text-white/40 mx-1 hidden sm:inline">•</span>
+            <span className="text-red-400 sm:mx-2 font-bold">
+              UNSOLD: <span data-testid="unsold-count">{unsoldCount}</span>
             </span>
           </div>
         </div>
@@ -800,6 +873,48 @@ export default function AuctionPage() {
               transition={{ duration: 0.4 }}>
               Players in Auction
             </motion.h2>
+
+            {/* Set / Pool Tabs Filter */}
+            {pools.length > 0 && (
+              <div className="mb-4 flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPoolTab("all")}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap ${
+                    selectedPoolTab === "all"
+                      ? "bg-[#fe6804] text-white shadow-md ring-2 ring-[#fe6804]"
+                      : "bg-black/40 border border-white/20 text-white/80 hover:text-white hover:bg-black/60"
+                  }`}
+                >
+                  All Sets ({activeCards.length})
+                </button>
+                {pools.map((p) => {
+                  const countInPool = activeCards.filter((c) => c.poolId === p.id).length;
+                  const isSelected = selectedPoolTab === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setSelectedPoolTab(p.id)}
+                      className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                        isSelected
+                          ? "bg-[#00BCD4] text-black shadow-md ring-2 ring-[#00BCD4]"
+                          : "bg-black/40 border border-white/20 text-white/80 hover:text-white hover:bg-black/60"
+                      }`}
+                    >
+                      <span>{p.name}</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                          isSelected ? "bg-black/20 text-black" : "bg-white/20 text-white"
+                        }`}
+                      >
+                        {countInPool}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <motion.div
               className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3"
               initial="hidden"

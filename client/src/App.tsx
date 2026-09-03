@@ -45,9 +45,17 @@ const AdminPlayers = lazy(() =>
 const AdminTeams = lazy(() =>
   import("@/pages/admin/AdminTeams").then((m) => ({ default: m.AdminTeams })),
 );
+const AdminPools = lazy(() =>
+  import("@/pages/admin/AdminPools").then((m) => ({ default: m.AdminPools })),
+);
 const AdminExport = lazy(() =>
   import("@/pages/admin/AdminExport").then((m) => ({
     default: m.AdminExport,
+  })),
+);
+const AdminLeaderboard = lazy(() =>
+  import("@/pages/admin/AdminLeaderboard").then((m) => ({
+    default: m.AdminLeaderboard,
   })),
 );
 
@@ -61,6 +69,7 @@ function Router() {
           <Switch location={location}>
             {/* Public routes */}
             <Route path="/" component={ElementLight} />
+            <Route path="/leaderboard" component={ElementLight} />
             <Route path="/team" component={TeamsListing} />
             <Route path="/team/:teamId/playing-xi" component={PlayingXI} />
             <Route path="/team/:teamId" component={TeamDashboard} />
@@ -87,6 +96,16 @@ function Router() {
             <Route path="/admin/teams">
               <ProtectedRoute requiredRole="admin">
                 <AdminTeams />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/admin/pools">
+              <ProtectedRoute requiredRole="admin">
+                <AdminPools />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/admin/leaderboard">
+              <ProtectedRoute requiredRole="admin">
+                <AdminLeaderboard />
               </ProtectedRoute>
             </Route>
             <Route path="/admin/export">

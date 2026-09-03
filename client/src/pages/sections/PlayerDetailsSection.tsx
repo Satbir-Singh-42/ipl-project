@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useIPLData } from "@/hooks/useIPLData";
+import { useAuth } from "@/contexts/AuthContext";
 import { PlayerTable } from "@/components/PlayerTable";
 import { LeaderboardView } from "@/components/LeaderboardView";
 import { GuidelinesView } from "@/components/GuidelinesView";
@@ -57,9 +58,18 @@ const TeamLogo = ({
 };
 
 export const PlayerDetailsSection = (): JSX.Element => {
-  const [activeTab, setActiveTab] = useState("overview");
+  const [location, setLocation] = useLocation();
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window !== "undefined") {
+      if (window.location.pathname === "/leaderboard") return "leaderboard";
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get("tab");
+      if (tab) return tab;
+    }
+    return "overview";
+  });
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
-  const [, setLocation] = useLocation();
+  const { isAuthenticated, role, logout } = useAuth();
   const {
     teamStats,
     players,
@@ -69,6 +79,21 @@ export const PlayerDetailsSection = (): JSX.Element => {
     getUnsoldPlayers,
     getSoldPlayersByTeam,
   } = useIPLData();
+
+  const navigationTabsList = React.useMemo(() => {
+    const list = [
+      { id: "overview", label: "OVERVIEW", isExternal: false, href: "" },
+      { id: "sold", label: "SOLD PLAYERS", isExternal: false, href: "" },
+      { id: "unsold", label: "UNSOLD PLAYERS", isExternal: false, href: "" },
+      { id: "leaderboard", label: "LEADERBOARD", isExternal: false, href: "" },
+      { id: "guidelines", label: "GUIDELINES", isExternal: false, href: "" },
+      { id: "auction", label: "AUCTION", isExternal: true, href: "/auction" },
+    ];
+    if (isAuthenticated && role === "admin") {
+      list.push({ id: "admin", label: "ADMIN PANEL", isExternal: true, href: "/admin" });
+    }
+    return list;
+  }, [isAuthenticated, role]);
 
   // Call all hooks unconditionally at the top level
   const { data: unsoldPlayers, isLoading: loadingUnsold } = getUnsoldPlayers();
@@ -117,9 +142,9 @@ export const PlayerDetailsSection = (): JSX.Element => {
     }).format(amount);
   };
 
-  const handleTabClick = (tab: { id: string; isExternal: boolean }) => {
-    if (tab.isExternal) {
-      setLocation("/auction");
+  const handleTabClick = (tab: { id: string; isExternal: boolean; href?: string }) => {
+    if (tab.href) {
+      setLocation(tab.href);
       return;
     }
     setActiveTab(tab.id);
@@ -342,7 +367,7 @@ export const PlayerDetailsSection = (): JSX.Element => {
                 <ul
                   className="flex items-center gap-1 md:gap-2 min-w-max pr-1"
                   role="tablist">
-                  {navigationTabs.map((tab) => (
+                  {navigationTabsList.map((tab) => (
                     <li key={tab.id} role="none">
                       <div>
                         <Button
@@ -352,7 +377,9 @@ export const PlayerDetailsSection = (): JSX.Element => {
                           aria-controls={`panel-${tab.id}`}
                           data-testid={`button-tab-${tab.id}`}
                           className={`h-auto px-2 md:px-3 lg:px-4 py-1.5 md:py-2 rounded-full text-xs md:text-sm font-semibold transition-all duration-200 focus-visible:ring-2 focus-visible:ring-[#fe6804] focus-visible:ring-offset-2 focus-visible:ring-offset-[#18184a] whitespace-nowrap ${
-                            tab.isExternal
+                            tab.id === "admin"
+                              ? "bg-gradient-to-r from-[#fe6804] to-[#ef4123] text-white hover:opacity-90 shadow-md"
+                              : tab.isExternal
                               ? "bg-[linear-gradient(180deg,rgba(255,107,0,1)_0%,rgba(239,65,35,1)_100%)] text-white hover:opacity-90"
                               : activeTab === tab.id
                               ? "bg-[linear-gradient(180deg,rgba(255,107,0,1)_0%,rgba(239,65,35,1)_100%)] text-white border-b-2 border-[#fe6804]"
@@ -364,6 +391,27 @@ export const PlayerDetailsSection = (): JSX.Element => {
                       </div>
                     </li>
                   ))}
+                  {isAuthenticated ? (
+                    <li>
+                      <Button
+                        variant="ghost"
+                        className="h-auto px-2 md:px-3 lg:px-4 py-1.5 md:py-2 rounded-full text-xs md:text-sm font-semibold transition-all duration-200 whitespace-nowrap bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30 hover:text-white"
+                        onClick={logout}
+                      >
+                        LOGOUT
+                      </Button>
+                    </li>
+                  ) : (
+                    <li>
+                      <Button
+                        variant="ghost"
+                        className="h-auto px-2 md:px-3 lg:px-4 py-1.5 md:py-2 rounded-full text-xs md:text-sm font-semibold transition-all duration-200 whitespace-nowrap bg-white/10 border border-[#90b6ff] text-white hover:bg-white/20 hover:border-[#fe6804]/50"
+                        onClick={() => setLocation("/login")}
+                      >
+                        LOGIN
+                      </Button>
+                    </li>
+                  )}
                 </ul>
               </nav>
             </div>

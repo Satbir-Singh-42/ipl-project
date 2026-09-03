@@ -53,6 +53,17 @@
   background: #0f1629;
 }
 
+/* Remove default number input spinners / counter scrolls */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 :root {
   --wwwiplt-2-0comanakiwa: rgba(144, 182, 255, 1);
   --wwwiplt-2-0combunting: rgba(24, 24, 74, 1);

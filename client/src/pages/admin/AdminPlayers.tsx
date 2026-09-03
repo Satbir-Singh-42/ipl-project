@@ -1,13 +1,55 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
-import { ArrowLeft, Plus, Trash2, Edit, Upload, Search } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Edit,
+  Upload,
+  Search,
+  Download,
+  AlertTriangle,
+  ChevronDown,
+  Check,
+  RefreshCw,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { supabaseService } from "@/services/supabaseService";
 import type { Player } from "@/services/supabaseService";
 import { formatIndianNumber } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { AUCTION_CONFIG } from "@shared/config";
+import { AdminHeader } from "@/components/AdminHeader";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { CustomDropdown } from "@/components/CustomDropdown";
+
+const ROLE_OPTIONS = [
+  {
+    value: "Batsman",
+    label: "Batsman",
+    desc: "Top order / specialist batter",
+    badgeColor: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+  },
+  {
+    value: "Bowler",
+    label: "Bowler",
+    desc: "Pace / spin specialist bowler",
+    badgeColor: "bg-green-500/20 text-green-300 border-green-500/30",
+  },
+  {
+    value: "All Rounder",
+    label: "All Rounder",
+    desc: "Dual capability batting & bowling",
+    badgeColor: "bg-purple-500/20 text-purple-300 border-purple-500/30",
+  },
+  {
+    value: "Wicket Keeper",
+    label: "Wicket Keeper",
+    desc: "Gloveman & dynamic batsman",
+    badgeColor: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+  },
+];
 
 export function AdminPlayers() {
   const { toast } = useToast();
@@ -15,6 +57,30 @@ export function AdminPlayers() {
   const [search, setSearch] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [importStatus, setImportStatus] = useState<{
+    total: number;
+    inserted: number;
+    errors: string[];
+  } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+
+  // Custom Confirmation Modal state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    confirmText?: string;
+    variant?: "danger" | "warning" | "info" | "primary";
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: "",
+    description: "",
+    onConfirm: () => {},
+  });
 
   // Form state
   const [formData, setFormData] = useState({
@@ -23,14 +89,44 @@ export function AdminPlayers() {
     country: "India",
     role: "Batsman",
     base_price: AUCTION_CONFIG.defaultBasePrice.toString(),
-    eval_points: "0",
-    t20_matches: "0",
+    eval_points: "",
+    t20_matches: "",
+    runs: "",
+    batting_sr: "",
+    wickets: "",
+    economy: "",
     image_url: "",
   });
 
+  const [isClearingUnsold, setIsClearingUnsold] = useState(false);
+
   const loadPlayers = async () => {
-    const data = await supabaseService.getPlayers();
-    setPlayers(data);
+    setIsLoading(true);
+    try {
+      const data = await supabaseService.getPlayers();
+      setPlayers(data);
+    } catch (err: unknown) {
+      console.error("Failed to load players:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleClearUnsold = async () => {
+    setIsClearingUnsold(true);
+    try {
+      await supabaseService.clearAllUnsold();
+      toast({
+        title: "Unsold Status Cleared",
+        description: "All unauctioned players are now available in the pool with no unsold stamps.",
+      });
+      await loadPlayers();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to clear unsold status";
+      toast({ title: message, variant: "destructive" });
+    } finally {
+      setIsClearingUnsold(false);
+    }
   };
 
   useEffect(() => {
@@ -44,12 +140,16 @@ export function AdminPlayers() {
       country: "India",
       role: "Batsman",
       base_price: AUCTION_CONFIG.defaultBasePrice.toString(),
-      eval_points: "0",
-      t20_matches: "0",
+      eval_points: "",
+      t20_matches: "",
+      runs: "",
+      batting_sr: "",
+      wickets: "",
+      economy: "",
       image_url: "",
     });
-    setShowAddForm(false);
     setEditingPlayer(null);
+    setShowAddForm(false);
   };
 
   const handleSubmit = async () => {
@@ -58,31 +158,30 @@ export function AdminPlayers() {
       return;
     }
 
+    setIsSaving(true);
     try {
-      if (editingPlayer?.dbId) {
-        await supabaseService.updatePlayer(editingPlayer.dbId, {
-          name: formData.name,
-          age: parseInt(formData.age) || null,
-          country: formData.country,
-          role: formData.role,
-          base_price: parseFloat(formData.base_price) || AUCTION_CONFIG.defaultBasePrice,
-          eval_points: parseInt(formData.eval_points) || 0,
-          t20_matches: parseInt(formData.t20_matches) || 0,
-          image_url: formData.image_url || null,
-        });
+      const playerPayload = {
+        name: formData.name.trim(),
+        age: formData.age ? parseInt(formData.age) : null,
+        country: formData.country.trim() || "India",
+        role: formData.role,
+        base_price: parseFloat(formData.base_price) || AUCTION_CONFIG.defaultBasePrice,
+        eval_points: parseInt(formData.eval_points) || 0,
+        t20_matches: parseInt(formData.t20_matches) || 0,
+        runs: formData.runs ? parseInt(formData.runs) : null,
+        batting_sr: formData.batting_sr ? parseFloat(formData.batting_sr) : null,
+        wickets: formData.wickets ? parseInt(formData.wickets) : null,
+        economy: formData.economy ? parseFloat(formData.economy) : null,
+        image_url: formData.image_url.trim() || null,
+      };
+
+      if (editingPlayer && editingPlayer.dbId) {
+        await supabaseService.updatePlayer(editingPlayer.dbId, playerPayload);
         toast({ title: `Updated ${formData.name}` });
       } else {
         await supabaseService.addPlayer({
-          name: formData.name,
-          age: parseInt(formData.age) || null,
-          country: formData.country,
-          role: formData.role,
-          base_price: parseFloat(formData.base_price) || AUCTION_CONFIG.defaultBasePrice,
-          eval_points: parseInt(formData.eval_points) || 0,
-          t20_matches: parseInt(formData.t20_matches) || 0,
-          image_url: formData.image_url || null,
+          ...playerPayload,
           status: "unsold",
-          sold_price: 0,
         });
         toast({ title: `Added ${formData.name}` });
       }
@@ -90,22 +189,50 @@ export function AdminPlayers() {
       resetForm();
       await loadPlayers();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Unknown error";
+      const message = err instanceof Error ? err.message : "Failed to save player";
       toast({ title: message, variant: "destructive" });
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleDelete = async (player: Player) => {
+  const handleDelete = (player: Player) => {
     if (!player.dbId) return;
-    if (!confirm(`Delete ${player.name}? This cannot be undone.`)) return;
 
+    setConfirmDialog({
+      isOpen: true,
+      title: "Delete Player",
+      description: `Are you sure you want to delete ${player.name}? This will remove them permanently from the catalogue and live auction database.`,
+      confirmText: "Delete Player",
+      variant: "danger",
+      onConfirm: async () => {
+        try {
+          await supabaseService.deletePlayer(player.dbId!);
+          toast({ title: `Deleted ${player.name}` });
+          await loadPlayers();
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : "Failed to delete player";
+          toast({ title: message, variant: "destructive" });
+        }
+      },
+    });
+  };
+
+  const handlePlayerImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingImage(true);
     try {
-      await supabaseService.deletePlayer(player.dbId);
-      toast({ title: `Deleted ${player.name}` });
-      await loadPlayers();
+      const publicUrl = await supabaseService.uploadImage("player-images", file);
+      setFormData((prev) => ({ ...prev, image_url: publicUrl }));
+      toast({ title: "Player photo uploaded to Storage" });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Unknown error";
+      const message = err instanceof Error ? err.message : "Failed to upload image";
       toast({ title: message, variant: "destructive" });
+    } finally {
+      setIsUploadingImage(false);
+      e.target.value = "";
     }
   };
 
@@ -117,59 +244,183 @@ export function AdminPlayers() {
       country: player.nation,
       role: player.role,
       base_price: player.basePrice.toString(),
-      eval_points: player.points?.toString() || "0",
-      t20_matches: player.t20Matches?.toString() || "0",
+      eval_points: player.points?.toString() || "",
+      t20_matches: player.t20Matches?.toString() || "",
+      runs: player.runs?.toString() || "",
+      batting_sr: player.battingSr?.toString() || "",
+      wickets: player.wickets?.toString() || "",
+      economy: player.economy?.toString() || "",
       image_url: player.images || "",
     });
     setShowAddForm(true);
+  };
+
+  const handleDownloadTemplate = () => {
+    const csvContent =
+      "name,role,country,age,t20_matches,runs,batting_sr,wickets,economy,eval_points,base_price,image_url\n" +
+      "Virat Kohli,Batsman,India,35,120,4008,137.96,4,8.12,95,20000000,\n" +
+      "Jasprit Bumrah,Bowler,India,30,90,62,68.88,145,6.85,98,20000000,\n" +
+      "Glenn Maxwell,All Rounder,Australia,35,110,2719,150.40,43,8.25,88,15000000,\n" +
+      "Heinrich Klaasen,Wicket Keeper,South Africa,32,85,1520,165.20,0,0,90,15000000,\n" +
+      "Rohit Sharma,Batsman,India,37,150,3974,139.97,1,8.00,92,20000000,";
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "ipl_players_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast({ title: "CSV template downloaded matching database schema" });
+  };
+
+  const parseCSVLine = (text: string): string[] => {
+    const result: string[] = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === "," && !inQuotes) {
+        result.push(current.trim().replace(/^"|"$/g, "").replace(/""/g, '"'));
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim().replace(/^"|"$/g, "").replace(/""/g, '"'));
+    return result;
   };
 
   const handleCSVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const text = await file.text();
-    const lines = text.split("\n").filter((l) => l.trim());
-    if (lines.length < 2) {
-      toast({ title: "CSV file is empty or has no data rows", variant: "destructive" });
-      return;
+    setIsImporting(true);
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r\n|\n|\r/).filter((l) => l.trim());
+      if (lines.length < 2) {
+        toast({
+          title: "CSV file is empty or has no data rows",
+          description: "Download the CSV Template to see the expected structure.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const headers = parseCSVLine(lines[0]).map((h) => h.toLowerCase().trim());
+      const nameIdx = headers.findIndex((h) => h.includes("name") || h.includes("player"));
+      const roleIdx = headers.findIndex(
+        (h) => h.includes("role") || h.includes("specialism") || h.includes("type") || h.includes("cat")
+      );
+      const countryIdx = headers.findIndex(
+        (h) => h.includes("country") || h.includes("nation") || h.includes("nationality")
+      );
+      const ageIdx = headers.findIndex((h) => h.includes("age"));
+      const matchesIdx = headers.findIndex((h) => h.includes("match") || h.includes("t20"));
+      const runsIdx = headers.findIndex((h) => h === "runs" || h.includes("run"));
+      const srIdx = headers.findIndex((h) => h === "batting_sr" || h.includes("strike") || h === "sr");
+      const wicketsIdx = headers.findIndex((h) => h === "wickets" || h.includes("wkt") || h.includes("wick"));
+      const econIdx = headers.findIndex((h) => h === "economy" || h.includes("econ") || h === "eco");
+      const pointsIdx = headers.findIndex(
+        (h) => h.includes("point") || h.includes("eval") || h.includes("rating")
+      );
+      const priceIdx = headers.findIndex(
+        (h) => h.includes("price") || h.includes("base") || h.includes("cost") || h.includes("reserve")
+      );
+      const imageIdx = headers.findIndex(
+        (h) => h.includes("image") || h.includes("photo") || h.includes("img")
+      );
+
+      if (nameIdx === -1) {
+        toast({
+          title: "Missing 'Name' column",
+          description:
+            "Headers found: " +
+            headers.slice(0, 5).join(", ") +
+            "... Click 'CSV Template' to download the correct format.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const playerRows = lines
+        .slice(1)
+        .map((line) => {
+          const cols = parseCSVLine(line);
+          const rawPrice = cols[priceIdx] || "";
+          const cleanPrice = parseFloat(rawPrice.replace(/[^0-9.]/g, ""));
+          const rawRuns = runsIdx !== -1 ? parseInt(cols[runsIdx]) : undefined;
+          const rawBattingSr = srIdx !== -1 ? parseFloat(cols[srIdx]) : undefined;
+          const rawWickets = wicketsIdx !== -1 ? parseInt(cols[wicketsIdx]) : undefined;
+          const rawEconomy = econIdx !== -1 ? parseFloat(cols[econIdx]) : undefined;
+
+          return {
+            name: cols[nameIdx] || "",
+            role: cols[roleIdx] || "Batsman",
+            country: cols[countryIdx] || "India",
+            age: parseInt(cols[ageIdx]) || undefined,
+            base_price:
+              !isNaN(cleanPrice) && cleanPrice > 0
+                ? cleanPrice
+                : AUCTION_CONFIG.defaultBasePrice,
+            eval_points: parseInt(cols[pointsIdx]) || 0,
+            image_url: cols[imageIdx] || undefined,
+            t20_matches: parseInt(cols[matchesIdx]) || 0,
+            runs: !isNaN(rawRuns as number) ? rawRuns : undefined,
+            batting_sr: !isNaN(rawBattingSr as number) ? rawBattingSr : undefined,
+            wickets: !isNaN(rawWickets as number) ? rawWickets : undefined,
+            economy: !isNaN(rawEconomy as number) ? rawEconomy : undefined,
+          };
+        })
+        .filter((p) => p.name.trim());
+
+      if (playerRows.length === 0) {
+        toast({
+          title: "No valid player rows found",
+          description: "Ensure the CSV contains player names.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const result = await supabaseService.bulkImportPlayers(playerRows);
+      setImportStatus({
+        total: playerRows.length,
+        inserted: result.inserted,
+        errors: result.errors,
+      });
+
+      if (result.inserted > 0) {
+        toast({
+          title: `Imported ${result.inserted} player${result.inserted > 1 ? "s" : ""} successfully`,
+        });
+      }
+
+      if (result.errors.length > 0) {
+        toast({
+          title: `${result.errors.length} player(s) could not be imported`,
+          description: result.errors[0],
+          variant: "destructive",
+        });
+      }
+
+      await loadPlayers();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to parse CSV file";
+      toast({
+        title: "CSV Import Failed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsImporting(false);
+      e.target.value = "";
     }
-
-    const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
-    const nameIdx = headers.findIndex((h) => h.includes("name") || h.includes("player"));
-    const roleIdx = headers.findIndex((h) => h.includes("role"));
-    const countryIdx = headers.findIndex((h) => h.includes("country") || h.includes("nation"));
-    const ageIdx = headers.findIndex((h) => h.includes("age"));
-    const priceIdx = headers.findIndex((h) => h.includes("price") || h.includes("base"));
-    const pointsIdx = headers.findIndex((h) => h.includes("point") || h.includes("eval"));
-    const imageIdx = headers.findIndex((h) => h.includes("image"));
-    const matchesIdx = headers.findIndex((h) => h.includes("match") || h.includes("t20"));
-
-    if (nameIdx === -1) {
-      toast({ title: "CSV must have a 'Player Name' column", variant: "destructive" });
-      return;
-    }
-
-    const playerRows = lines.slice(1).map((line) => {
-      const cols = line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
-      return {
-        name: cols[nameIdx] || "",
-        role: cols[roleIdx] || "Batsman",
-        country: cols[countryIdx] || "India",
-        age: parseInt(cols[ageIdx]) || undefined,
-        base_price: parseFloat(cols[priceIdx]?.replace(/[₹,]/g, "")) || AUCTION_CONFIG.defaultBasePrice,
-        eval_points: parseInt(cols[pointsIdx]) || 0,
-        image_url: cols[imageIdx] || undefined,
-        t20_matches: parseInt(cols[matchesIdx]) || 0,
-      };
-    }).filter((p) => p.name);
-
-    const result = await supabaseService.bulkImportPlayers(playerRows);
-    toast({
-      title: `Imported ${result.inserted} players${result.errors.length > 0 ? `, ${result.errors.length} errors` : ""}`,
-    });
-    await loadPlayers();
-    e.target.value = "";
   };
 
   const filteredPlayers = players.filter(
@@ -180,208 +431,586 @@ export function AdminPlayers() {
   );
 
   return (
-    <div className="min-h-screen bg-[#0f1629] text-white p-4 md:p-8">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="max-w-6xl mx-auto space-y-6"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-3">
-            <Link href="/admin">
-              <button className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors">
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-            </Link>
-            <h1 className="text-2xl font-bold">Manage Players</h1>
-            <span className="text-white/50 text-sm">({players.length} total)</span>
-          </div>
-          <div className="flex gap-2">
-            <label className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#00bcd4]/20 border border-[#00bcd4]/40 text-[#00bcd4] hover:bg-[#00bcd4]/30 transition-colors text-sm font-semibold cursor-pointer">
-              <Upload className="w-4 h-4" />
-              Import CSV
-              <input
-                type="file"
-                accept=".csv"
-                className="hidden"
-                onChange={handleCSVUpload}
-              />
-            </label>
-            <button
-              onClick={() => {
-                resetForm();
-                setShowAddForm(true);
-              }}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#fe6804]/20 border border-[#fe6804]/40 text-[#fe6804] hover:bg-[#fe6804]/30 transition-colors text-sm font-semibold"
-            >
-              <Plus className="w-4 h-4" />
-              Add Player
-            </button>
-          </div>
-        </div>
+    <div className="bg-[#18184a] w-full min-h-screen text-white flex flex-col">
+      <AdminHeader activeTab="players" />
+      <section className="w-full bg-[#18184a] p-2 sm:p-4 md:p-6 py-3 sm:py-5 flex-1">
+        <div className="w-full bg-wwwiplt20comconcrete-80 rounded-xl md:rounded-2xl backdrop-blur-[28.09px] p-2.5 sm:p-4 md:p-5">
+          {/* Add/Edit Form Modal */}
+          {showAddForm && (
+            <Card className="w-full bg-[#0f1629] border-[#1a2332] mb-6 shadow-2xl">
+              <CardHeader className="p-4 md:p-6 border-b border-[#1a2332] flex flex-row items-center justify-between">
+                <CardTitle className="text-lg text-white font-bold [font-family:'Work_Sans',Helvetica]">
+                  {editingPlayer ? `Edit: ${editingPlayer.name}` : "Add New Player"}
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#00BCD4]/10 text-[#00BCD4] border border-[#00BCD4]/30">
+                    Live Preview
+                  </span>
+                </div>
+              </CardHeader>
+              <CardContent className="p-4 md:p-6">
+                <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+                  {/* FORM FIELDS (8 cols on XL) */}
+                  <div className="xl:col-span-8 space-y-6">
+                    {/* Section 1: Basic Profile */}
+                    <div>
+                      <div className="flex items-center gap-2 pb-2 mb-3 border-b border-[#1a2332]">
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#fe6804]" />
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                          Basic Player Profile
+                        </h4>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="col-span-1 sm:col-span-2">
+                          <label className="block text-xs font-semibold text-white/80 mb-1">
+                            Player Full Name *
+                          </label>
+                          <input
+                            placeholder="e.g. Virat Kohli"
+                            value={formData.name}
+                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            className="w-full px-3 py-2 rounded-lg bg-[#1a2332] border border-[#2a3441] text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fe6804]"
+                          />
+                        </div>
 
-        {/* Add/Edit Form */}
-        {showAddForm && (
-          <Card className="bg-[#18184a]/80 border-white/10">
-            <CardHeader>
-              <CardTitle className="text-lg text-white">
-                {editingPlayer ? `Edit: ${editingPlayer.name}` : "Add New Player"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <input
-                  placeholder="Player Name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="col-span-2 px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fe6804]/50"
-                />
-                <select
-                  value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                  className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm focus:outline-none"
-                >
-                  <option value="Batsman">Batsman</option>
-                  <option value="Bowler">Bowler</option>
-                  <option value="All Rounder">All Rounder</option>
-                  <option value="Wicket Keeper">Wicket Keeper</option>
-                </select>
-                <input
-                  placeholder="Country"
-                  value={formData.country}
-                  onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                  className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm focus:outline-none"
-                />
-                <input
-                  type="number"
-                  placeholder="Age"
-                  value={formData.age}
-                  onChange={(e) => setFormData({ ...formData, age: e.target.value })}
-                  className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm focus:outline-none"
-                />
-                <input
-                  type="number"
-                  placeholder="Base Price"
-                  value={formData.base_price}
-                  onChange={(e) => setFormData({ ...formData, base_price: e.target.value })}
-                  className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm focus:outline-none"
-                />
-                <input
-                  type="number"
-                  placeholder="Eval Points"
-                  value={formData.eval_points}
-                  onChange={(e) => setFormData({ ...formData, eval_points: e.target.value })}
-                  className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm focus:outline-none"
-                />
-                <input
-                  placeholder="Image URL"
-                  value={formData.image_url}
-                  onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                  className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm focus:outline-none"
-                />
+                        <div>
+                          <label className="block text-xs font-semibold text-white/80 mb-1">
+                            Role / Specialism *
+                          </label>
+                          <CustomDropdown
+                            value={formData.role}
+                            onChange={(val) => setFormData({ ...formData, role: val })}
+                            options={ROLE_OPTIONS.map((opt) => ({
+                              value: opt.value,
+                              label: opt.label,
+                              description: opt.desc,
+                              badge: opt.label,
+                              badgeColor: opt.badgeColor,
+                            }))}
+                            placeholder="Select role..."
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-white/80 mb-1">
+                            Country / Nationality
+                          </label>
+                          <input
+                            placeholder="e.g. India"
+                            value={formData.country}
+                            onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                            className="w-full px-3 py-2 rounded-lg bg-[#1a2332] border border-[#2a3441] text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fe6804]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-white/80 mb-1">
+                            Age
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="e.g. 35"
+                            value={formData.age}
+                            onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                            className="w-full px-3 py-2 rounded-lg bg-[#1a2332] border border-[#2a3441] text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fe6804]"
+                          />
+                        </div>
+
+                        <div className="col-span-1 sm:col-span-2 lg:col-span-3">
+                          <label className="block text-xs font-semibold text-white/80 mb-1">
+                            Profile Image URL
+                          </label>
+                          <div className="flex gap-2 items-center">
+                            <input
+                              placeholder="https://... or upload a photo"
+                              value={formData.image_url}
+                              onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+                              className="w-full px-3 py-2 rounded-lg bg-[#1a2332] border border-[#2a3441] text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fe6804]"
+                            />
+                            <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#1a2332] hover:bg-[#2a3441] border border-[#2a3441] text-white text-xs font-semibold cursor-pointer shrink-0 transition-colors">
+                              <Upload className="w-3.5 h-3.5 text-[#00BCD4]" />
+                              {isUploadingImage ? "Uploading..." : "Upload Photo"}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={handlePlayerImageUpload}
+                                disabled={isUploadingImage}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Section 2: Auction Pricing & Rating */}
+                    <div>
+                      <div className="flex items-center gap-2 pb-2 mb-3 border-b border-[#1a2332]">
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#00BCD4]" />
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                          Auction Valuation & Rating
+                        </h4>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-white/80 mb-1">
+                            Base Reserve Price (₹) *
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="e.g. 400000"
+                            value={formData.base_price}
+                            onChange={(e) => setFormData({ ...formData, base_price: e.target.value })}
+                            className="w-full px-3 py-2 rounded-lg bg-[#1a2332] border border-[#2a3441] text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fe6804]"
+                          />
+                          <p className="text-[11px] text-white/50 mt-1">
+                            Starting bid: {formData.base_price ? `₹${formatIndianNumber(parseFloat(formData.base_price) || 0)}` : "None"}
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-white/80 mb-1">
+                            Evaluation Rating Points (0-100)
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="e.g. 85"
+                            value={formData.eval_points}
+                            onChange={(e) => setFormData({ ...formData, eval_points: e.target.value })}
+                            className="w-full px-3 py-2 rounded-lg bg-[#1a2332] border border-[#2a3441] text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fe6804]"
+                          />
+                          <p className="text-[11px] text-white/50 mt-1">Player skill score</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Section 3: Career T20 Statistics */}
+                    <div>
+                      <div className="flex items-center gap-2 pb-2 mb-3 border-b border-[#1a2332]">
+                        <span className="w-2.5 h-2.5 rounded-full bg-green-400" />
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                          Career Cricket Statistics (Optional)
+                        </h4>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-white/80 mb-1">
+                            T20 Matches
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="e.g. 115"
+                            value={formData.t20_matches}
+                            onChange={(e) => setFormData({ ...formData, t20_matches: e.target.value })}
+                            className="w-full px-3 py-2 rounded-lg bg-[#1a2332] border border-[#2a3441] text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fe6804]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-white/80 mb-1">
+                            Total Runs
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="e.g. 4008"
+                            value={formData.runs}
+                            onChange={(e) => setFormData({ ...formData, runs: e.target.value })}
+                            className="w-full px-3 py-2 rounded-lg bg-[#1a2332] border border-[#2a3441] text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fe6804]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-white/80 mb-1">
+                            Batting Strike Rate
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="e.g. 137.96"
+                            value={formData.batting_sr}
+                            onChange={(e) => setFormData({ ...formData, batting_sr: e.target.value })}
+                            className="w-full px-3 py-2 rounded-lg bg-[#1a2332] border border-[#2a3441] text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fe6804]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-white/80 mb-1">
+                            Total Wickets
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="e.g. 4"
+                            value={formData.wickets}
+                            onChange={(e) => setFormData({ ...formData, wickets: e.target.value })}
+                            className="w-full px-3 py-2 rounded-lg bg-[#1a2332] border border-[#2a3441] text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fe6804]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-white/80 mb-1">
+                            Bowling Economy
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="e.g. 7.45"
+                            value={formData.economy}
+                            onChange={(e) => setFormData({ ...formData, economy: e.target.value })}
+                            className="w-full px-3 py-2 rounded-lg bg-[#1a2332] border border-[#2a3441] text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fe6804]"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 pt-4 border-t border-[#1a2332]">
+                      <button
+                        disabled={isSaving}
+                        onClick={handleSubmit}
+                        className="px-6 py-2 rounded-lg bg-[#fe6804] text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
+                      >
+                        {isSaving && <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />}
+                        {isSaving ? "Saving..." : editingPlayer ? "Update Player" : "Add Player"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetForm}
+                        className="px-5 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-semibold border border-white/15 hover:border-white/30 transition-all active:scale-95"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* LIVE PREVIEW PANEL (4 cols on XL) */}
+                  <div className="xl:col-span-4 border-t xl:border-t-0 xl:border-l border-[#1a2332] pt-6 xl:pt-0 xl:pl-6 flex flex-col items-center">
+                    <div className="w-full text-xs font-bold uppercase tracking-wider text-[#fe6804] mb-3 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-[#fe6804]" />
+                      Live Auction Card Preview
+                    </div>
+
+                    <div className="sticky top-6 w-full max-w-xs rounded-2xl bg-[#141c2e] border border-white/15 overflow-hidden shadow-2xl p-4 space-y-3">
+                      {/* Image / Avatar Header */}
+                      <div className="relative w-full h-44 rounded-xl bg-gradient-to-br from-[#1e293b] to-[#0b2a7d]/40 overflow-hidden flex items-center justify-center border border-white/10">
+                        {formData.image_url ? (
+                          <img
+                            src={formData.image_url}
+                            alt="Preview"
+                            className="w-full h-full object-cover object-top"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = "none";
+                            }}
+                          />
+                        ) : (
+                          <div className="w-16 h-16 rounded-full bg-[#1a2332] border border-white/20 flex items-center justify-center text-2xl font-bold text-white/70">
+                            {formData.name.trim() ? formData.name.trim().charAt(0).toUpperCase() : "?"}
+                          </div>
+                        )}
+
+                        {/* Top-right badges */}
+                        <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
+                          {formData.country && formData.country.toLowerCase().trim() !== "india" && (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-600 text-white shadow">
+                              OVERSEAS
+                            </span>
+                          )}
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-black/60 backdrop-blur-md text-white border border-white/20">
+                            {formData.role}
+                          </span>
+                        </div>
+
+                        {/* Age badge bottom left */}
+                        {formData.age && (
+                          <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded text-[10px] font-bold bg-black/70 text-white/90">
+                            Age: {formData.age}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Name & Origin */}
+                      <div>
+                        <h3 className="text-base font-bold text-white truncate">
+                          {formData.name.trim() || "Player Name"}
+                        </h3>
+                        <p className="text-xs text-white/60">
+                          {formData.country.trim() || "Country"} • {formData.role}
+                        </p>
+                      </div>
+
+                      {/* Valuation & Rating Block */}
+                      <div className="grid grid-cols-2 gap-2 p-2.5 rounded-xl bg-[#0f1629] border border-white/10">
+                        <div>
+                          <div className="text-[10px] font-semibold text-white/50 uppercase">Base Price</div>
+                          <div className="text-xs font-bold text-green-400 truncate">
+                            ₹{formatIndianNumber(parseFloat(formData.base_price) || AUCTION_CONFIG.defaultBasePrice)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-semibold text-white/50 uppercase">Rating</div>
+                          <div className="text-xs font-bold text-[#00BCD4]">
+                            {formData.eval_points ? `${formData.eval_points} / 100` : "Unrated"}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Career Stats Pills */}
+                      {(formData.t20_matches || formData.runs || formData.wickets || formData.batting_sr || formData.economy) ? (
+                        <div className="p-2.5 rounded-xl bg-[#0f1629] border border-white/10 space-y-1.5">
+                          <div className="text-[10px] font-bold text-white/50 uppercase">Career Stats</div>
+                          <div className="flex flex-wrap gap-1.5 text-[10px]">
+                            {formData.t20_matches && (
+                              <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-white/80">
+                                Matches: <b className="text-white">{formData.t20_matches}</b>
+                              </span>
+                            )}
+                            {formData.runs && (
+                              <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-white/80">
+                                Runs: <b className="text-white">{formData.runs}</b>
+                              </span>
+                            )}
+                            {formData.batting_sr && (
+                              <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-white/80">
+                                SR: <b className="text-white">{formData.batting_sr}</b>
+                              </span>
+                            )}
+                            {formData.wickets && (
+                              <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-white/80">
+                                Wkts: <b className="text-white">{formData.wickets}</b>
+                              </span>
+                            )}
+                            {formData.economy && (
+                              <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-white/80">
+                                Econ: <b className="text-white">{formData.economy}</b>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card className="w-full bg-[#0f1629] border-[#1a2332]">
+            <CardHeader className="p-3 sm:p-4 md:p-5">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <CardTitle className="text-white text-base sm:text-lg md:text-xl font-bold [font-family:'Work_Sans',Helvetica]">
+                  Manage Players ({filteredPlayers.length})
+                </CardTitle>
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                  <button
+                    onClick={handleDownloadTemplate}
+                    className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-full bg-[#1a2332] hover:bg-[#2a3441] border border-[#2a3441] text-white text-xs font-semibold shadow-md transition-colors"
+                    title="Download Sample CSV Template"
+                  >
+                    <Download className="w-3.5 h-3.5 text-[#00BCD4]" />
+                    CSV Template
+                  </button>
+                  <label className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-[linear-gradient(180deg,rgba(255,107,0,1)_0%,rgba(239,65,35,1)_100%)] text-white hover:opacity-90 shadow-md transition-opacity text-xs font-semibold cursor-pointer">
+                    <Upload className="w-3.5 h-3.5" />
+                    Import CSV
+                    <input
+                      type="file"
+                      accept=".csv"
+                      className="hidden"
+                      onChange={handleCSVUpload}
+                    />
+                  </label>
+                  <button
+                    onClick={() => {
+                      resetForm();
+                      setShowAddForm(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-[#1a2332] hover:bg-[#2a3441] border border-[#2a3441] text-white text-xs font-semibold shadow-md transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add Player
+                  </button>
+                  <button
+                    onClick={handleClearUnsold}
+                    disabled={isClearingUnsold}
+                    className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-full bg-[#1a2332] hover:bg-[#2a3441] border border-[#2a3441] text-white text-xs font-semibold shadow-md transition-colors disabled:opacity-50"
+                    title="Remove UNSOLD stamps and mark all unauctioned players as Available in Auction"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isClearingUnsold ? "animate-spin" : ""}`} />
+                    Reset to Available
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-2 mt-4">
-                <button
-                  onClick={handleSubmit}
-                  className="px-6 py-2 rounded-lg bg-[#fe6804] text-white text-sm font-semibold hover:opacity-90 transition-opacity"
-                >
-                  {editingPlayer ? "Update" : "Add Player"}
-                </button>
-                <button
-                  onClick={resetForm}
-                  className="px-6 py-2 rounded-lg bg-white/10 text-white text-sm font-semibold hover:bg-white/20 transition-colors"
-                >
-                  Cancel
-                </button>
+
+              {/* Search Box */}
+              <div className="mt-3 relative">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <Input
+                    type="text"
+                    placeholder="Search players by name, role, nation..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-9 h-9 sm:h-10 text-xs sm:text-sm bg-[#1a2332] border-[#2a3441] text-white placeholder:text-gray-400 focus:ring-2 focus:ring-[#fe6804] focus:border-[#fe6804]"
+                  />
+                </div>
+                {search && (
+                  <button
+                    onClick={() => setSearch("")}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Import Progress Banner */}
+              {isImporting && (
+                <div className="mt-3 p-3 sm:p-4 rounded-xl bg-[#1a2332] border border-[#00BCD4] flex items-center gap-3 text-white">
+                  <div className="w-5 h-5 rounded-full border-2 border-[#00BCD4] border-t-transparent animate-spin shrink-0" />
+                  <div>
+                    <div className="text-sm font-bold text-white">Importing Players into Supabase...</div>
+                    <div className="text-xs text-white/60">Parsing records and updating database. Please wait.</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Import Warning/Status Banner */}
+              {importStatus && importStatus.errors.length > 0 && (
+                <div className="mt-3 p-3 sm:p-4 rounded-xl bg-red-950/40 border border-red-500/40 text-red-200 text-xs space-y-2 animate-in fade-in">
+                  <div className="flex items-center justify-between font-bold">
+                    <span className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-red-400" />
+                      Import Warnings: {importStatus.inserted} successful, {importStatus.errors.length} failed
+                    </span>
+                    <button
+                      onClick={() => setImportStatus(null)}
+                      className="text-white/60 hover:text-white"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="max-h-28 overflow-y-auto space-y-1">
+                    {importStatus.errors.map((err, i) => (
+                      <div key={i} className="text-[11px] text-red-300 font-mono">
+                        {err}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardHeader>
+
+            <CardContent className="p-0">
+              <div className="overflow-x-auto scrollbar-hide">
+                <div className="max-h-[70vh] overflow-y-auto">
+                  <table className="w-full text-left text-xs sm:text-sm">
+                    <thead className="sticky top-0 bg-[#0a1120] border-b border-[#1a2332] z-10">
+                      <tr>
+                        <th className="px-3 py-2.5 sm:px-3.5 sm:py-3 text-white font-semibold whitespace-nowrap">Player Name</th>
+                        <th className="px-2.5 py-2.5 sm:px-3 sm:py-3 text-white font-semibold whitespace-nowrap">Role</th>
+                        <th className="px-2.5 py-2.5 sm:px-3 sm:py-3 text-white font-semibold whitespace-nowrap">Nation</th>
+                        <th className="px-2 py-2.5 sm:px-2.5 sm:py-3 text-center text-white font-semibold whitespace-nowrap">Age</th>
+                        <th className="px-2.5 py-2.5 sm:px-3 sm:py-3 text-white font-semibold whitespace-nowrap">Base Price</th>
+                        <th className="px-2.5 py-2.5 sm:px-3 sm:py-3 text-white font-semibold whitespace-nowrap">Status</th>
+                        <th className="px-2.5 py-2.5 sm:px-3 sm:py-3 text-white font-semibold whitespace-nowrap">Sold Price</th>
+                        <th className="px-2.5 py-2.5 sm:px-3 sm:py-3 text-white font-semibold whitespace-nowrap">Team</th>
+                        <th className="px-2 py-2.5 sm:px-3 sm:py-3 text-center text-white font-semibold whitespace-nowrap">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#1a2332]">
+                      {isLoading ? (
+                        <tr>
+                          <td colSpan={9} className="text-center py-20">
+                            <div className="flex flex-col items-center justify-center gap-3 text-white/70">
+                              <div className="w-8 h-8 rounded-full border-2 border-[#fe6804] border-t-transparent animate-spin" />
+                              <span className="text-sm font-semibold">Loading players from database...</span>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : filteredPlayers.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} className="text-center py-12 text-gray-400">
+                            No players found
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredPlayers.map((player, idx) => (
+                          <tr
+                            key={player.name + idx}
+                            className="hover:bg-[#1a2332]/50 transition-colors"
+                          >
+                            <td className="px-3 py-2.5 sm:px-3.5 sm:py-3 font-semibold text-white whitespace-nowrap">{player.name}</td>
+                            <td className="px-2.5 py-2.5 sm:px-3 sm:py-3 text-white/80 whitespace-nowrap">
+                              <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-white/5 border border-white/10">
+                                {player.role}
+                              </span>
+                            </td>
+                            <td className="px-2.5 py-2.5 sm:px-3 sm:py-3 text-white/80 whitespace-nowrap">{player.nation}</td>
+                            <td className="px-2 py-2.5 sm:px-2.5 sm:py-3 text-center text-white/80 whitespace-nowrap">{player.age || "-"}</td>
+                            <td className="px-2.5 py-2.5 sm:px-3 sm:py-3 text-white/90 font-medium whitespace-nowrap">
+                              ₹{formatIndianNumber(player.basePrice)}
+                            </td>
+                            <td className="px-2.5 py-2.5 sm:px-3 sm:py-3 whitespace-nowrap">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                                  player.status === "sold" && player.soldPrice > 0
+                                    ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                                    : player.isUnsold
+                                    ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                                    : "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                                }`}
+                              >
+                                {player.status === "sold" && player.soldPrice > 0
+                                  ? "SOLD"
+                                  : player.isUnsold
+                                  ? "UNSOLD"
+                                  : "IN AUCTION"}
+                              </span>
+                            </td>
+                            <td className="px-2.5 py-2.5 sm:px-3 sm:py-3 text-white/90 font-medium whitespace-nowrap">
+                              {player.soldPrice > 0 ? `₹${formatIndianNumber(player.soldPrice)}` : "-"}
+                            </td>
+                            <td className="px-2.5 py-2.5 sm:px-3 sm:py-3 text-white/80 truncate max-w-[130px] whitespace-nowrap">
+                              {player.team || "-"}
+                            </td>
+                            <td className="px-2 py-2.5 sm:px-3 sm:py-3 text-center whitespace-nowrap">
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => handleEdit(player)}
+                                  className="p-1.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
+                                  title="Edit player"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(player)}
+                                  className="p-1.5 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+                                  title="Delete player"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </CardContent>
           </Card>
-        )}
-
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
-          <input
-            type="search"
-            placeholder="Search players..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#fe6804]/50"
-          />
         </div>
+      </section>
 
-        {/* Players Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-white/10 text-white/50 text-left">
-                <th className="py-3 px-3">#</th>
-                <th className="py-3 px-3">Name</th>
-                <th className="py-3 px-3">Role</th>
-                <th className="py-3 px-3">Nation</th>
-                <th className="py-3 px-3">Base Price</th>
-                <th className="py-3 px-3">Status</th>
-                <th className="py-3 px-3">Sold Price</th>
-                <th className="py-3 px-3">Team</th>
-                <th className="py-3 px-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredPlayers.map((player, idx) => (
-                <tr
-                  key={player.name + idx}
-                  className="border-b border-white/5 hover:bg-white/5 transition-colors"
-                >
-                  <td className="py-2.5 px-3 text-white/40">{idx + 1}</td>
-                  <td className="py-2.5 px-3 font-semibold text-white">{player.name}</td>
-                  <td className="py-2.5 px-3 text-white/70">{player.role}</td>
-                  <td className="py-2.5 px-3 text-white/70">{player.nation}</td>
-                  <td className="py-2.5 px-3 text-white/70">
-                    ₹{formatIndianNumber(player.basePrice)}
-                  </td>
-                  <td className="py-2.5 px-3">
-                    <span
-                      className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                        player.status === "sold"
-                          ? "bg-green-500/20 text-green-400"
-                          : "bg-red-500/20 text-red-400"
-                      }`}
-                    >
-                      {player.status.toUpperCase()}
-                    </span>
-                  </td>
-                  <td className="py-2.5 px-3 text-white/70">
-                    {player.soldPrice > 0
-                      ? `₹${formatIndianNumber(player.soldPrice)}`
-                      : "-"}
-                  </td>
-                  <td className="py-2.5 px-3 text-white/70 truncate max-w-[120px]">
-                    {player.team || "-"}
-                  </td>
-                  <td className="py-2.5 px-3">
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => handleEdit(player)}
-                        className="p-1.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(player)}
-                        className="p-1.5 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </motion.div>
+      {/* Custom Confirmation Modal */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog((prev) => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        confirmText={confirmDialog.confirmText}
+        variant={confirmDialog.variant}
+      />
     </div>
   );
 }

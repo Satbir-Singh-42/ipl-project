@@ -22,6 +22,21 @@ export interface Player {
   t20Matches?: number;
   isUnsold?: boolean;
   dbId?: number;
+  runs?: number;
+  battingSr?: number;
+  wickets?: number;
+  economy?: number;
+  poolId?: number | null;
+  auctionOrder?: number;
+}
+
+export interface Pool {
+  id: number;
+  name: string;
+  orderIndex: number;
+  playerCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Team {
@@ -44,12 +59,22 @@ export interface TeamStats {
   fundsRemaining: number;
   totalPoints: number;
   startingBudget: number;
+  logoUrl?: string | null;
+  borderColor?: string | null;
+  bgGradient?: string | null;
 }
 
 // Raw DB row types
+interface DBPool {
+  id: number;
+  name: string;
+  order_index: number;
+  created_at: string;
+  updated_at: string;
+}
+
 interface DBPlayer {
   id: number;
-  sr_no: number | null;
   name: string;
   age: number | null;
   country: string | null;
@@ -66,6 +91,8 @@ interface DBPlayer {
   sold_price: number | null;
   sold_to_team: string | null;
   sold_at: string | null;
+  pool_id?: number | null;
+  auction_order?: number | null;
 }
 
 interface DBTeam {
@@ -102,8 +129,14 @@ class SupabaseService {
       originalIndex: index,
       images: row.image_url || "",
       t20Matches: row.t20_matches || undefined,
-      isUnsold: row.status === "unsold",
+      isUnsold: false,
       dbId: row.id,
+      runs: row.runs || undefined,
+      battingSr: row.batting_sr ? Number(row.batting_sr) : undefined,
+      wickets: row.wickets || undefined,
+      economy: row.economy ? Number(row.economy) : undefined,
+      poolId: row.pool_id ?? null,
+      auctionOrder: row.auction_order ?? 0,
     };
   }
 
@@ -121,16 +154,26 @@ class SupabaseService {
     const { data, error } = await supabase
       .from("players")
       .select("*")
-      .order("sr_no", { ascending: true });
+      .order("id", { ascending: true });
 
     if (error) {
       console.error("Failed to fetch players:", error.message);
       return [];
     }
 
-    return (data || []).map((row: DBPlayer, index: number) =>
+    const mapped = (data || []).map((row: DBPlayer, index: number) =>
       this.toPlayer(row, index),
     );
+
+    // In-memory sort: by auctionOrder if present, else by DB id
+    return mapped.sort((a, b) => {
+      const orderA = a.auctionOrder ?? 0;
+      const orderB = b.auctionOrder ?? 0;
+      if (orderA !== 0 || orderB !== 0) {
+        return orderA - orderB;
+      }
+      return (a.dbId ?? 0) - (b.dbId ?? 0);
+    });
   }
 
   async getTeamStats(): Promise<TeamStats[]> {
@@ -177,6 +220,9 @@ class SupabaseService {
         fundsRemaining: Number(team.starting_budget) - totalSpent,
         totalPoints,
         startingBudget: Number(team.starting_budget),
+        logoUrl: team.logo_url || this.getTeamLogo(teamName),
+        borderColor: team.border_color || this.getTeamBorderColor(teamName),
+        bgGradient: team.bg_gradient || this.getTeamGradient(teamName),
       };
     });
   }
@@ -386,6 +432,418 @@ class SupabaseService {
     if (error) throw new Error(`Failed to update budget: ${error.message}`);
   }
 
+  async createTeam(team: {
+    name: string;
+    slug?: string;
+    logo_url?: string;
+    border_color?: string;
+    bg_gradient?: string;
+    starting_budget?: number;
+  }): Promise<void> {
+    const slug =
+      team.slug && team.slug.trim()
+        ? team.slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")
+        : team.name
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/(^-|-$)/g, "");
+
+    const { error } = await supabase.from("teams").insert({
+      name: team.name.trim(),
+      slug,
+      logo_url: team.logo_url || null,
+      border_color: team.border_color || "#fe6804",
+      bg_gradient:
+        team.bg_gradient ||
+        "bg-[linear-gradient(135deg,rgba(254,104,4,0.95)_0%,rgba(200,80,0,0.85)_100%)]",
+      starting_budget: team.starting_budget || 10000000,
+    });
+
+    if (error) throw new Error(`Failed to create team: ${error.message}`);
+  }
+
+  async updateTeam(
+    slug: string,
+    updates: {
+      name?: string;
+      logo_url?: string;
+      border_color?: string;
+      bg_gradient?: string;
+      starting_budget?: number;
+    },
+  ): Promise<void> {
+    const { error } = await supabase
+      .from("teams")
+      .update(updates)
+      .eq("slug", slug);
+
+    if (error) throw new Error(`Failed to update team: ${error.message}`);
+  }
+
+  async deleteTeam(slug: string): Promise<void> {
+    const { error } = await supabase.from("teams").delete().eq("slug", slug);
+    if (error) throw new Error(`Failed to delete team: ${error.message}`);
+  }
+
+  async uploadImage(
+    bucket: "player-images" | "team-logos",
+    file: File,
+  ): Promise<string> {
+    const ext = file.name.split(".").pop() || "png";
+    const filename = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
+    const filePath = `${filename}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(bucket)
+      .upload(filePath, file, { cacheControl: "3600", upsert: true });
+
+    if (uploadError) {
+      throw new Error(`Upload to ${bucket} failed: ${uploadError.message}`);
+    }
+
+    const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
+    return data.publicUrl;
+  }
+
+  // ─── POOLS & SETS MANAGEMENT ───
+
+  async getPools(): Promise<Pool[]> {
+    const { data: poolsData, error: poolsError } = await supabase
+      .from("pools")
+      .select("*")
+      .order("order_index", { ascending: true });
+
+    if (poolsError) {
+      console.error("Failed to fetch pools:", poolsError.message);
+      return [];
+    }
+
+    // Get player counts per pool
+    const { data: playersData } = await supabase
+      .from("players")
+      .select("pool_id");
+
+    const counts: Record<number, number> = {};
+    (playersData || []).forEach((p: { pool_id: number | null }) => {
+      if (p.pool_id) {
+        counts[p.pool_id] = (counts[p.pool_id] || 0) + 1;
+      }
+    });
+
+    return (poolsData || []).map((row: DBPool) => ({
+      id: row.id,
+      name: row.name,
+      orderIndex: row.order_index,
+      playerCount: counts[row.id] || 0,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  }
+
+  async createPool(name: string, orderIndex?: number): Promise<Pool> {
+    let nextOrder = orderIndex;
+    if (nextOrder === undefined) {
+      const { data } = await supabase
+        .from("pools")
+        .select("order_index")
+        .order("order_index", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      nextOrder = (data?.order_index || 0) + 1;
+    }
+
+    const { data, error } = await supabase
+      .from("pools")
+      .insert({ name: name.trim(), order_index: nextOrder })
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to create pool: ${error.message}`);
+    return {
+      id: data.id,
+      name: data.name,
+      orderIndex: data.order_index,
+      playerCount: 0,
+    };
+  }
+
+  async updatePool(
+    id: number,
+    updates: { name?: string; orderIndex?: number },
+  ): Promise<void> {
+    const payload: { name?: string; order_index?: number; updated_at?: string } = {
+      updated_at: new Date().toISOString(),
+    };
+    if (updates.name !== undefined) payload.name = updates.name.trim();
+    if (updates.orderIndex !== undefined) payload.order_index = updates.orderIndex;
+
+    const { error } = await supabase.from("pools").update(payload).eq("id", id);
+    if (error) throw new Error(`Failed to update pool: ${error.message}`);
+  }
+
+  async deletePool(id: number): Promise<void> {
+    // Unassign players first
+    await supabase.from("players").update({ pool_id: null, auction_order: 0 }).eq("pool_id", id);
+    const { error } = await supabase.from("pools").delete().eq("id", id);
+    if (error) throw new Error(`Failed to delete pool: ${error.message}`);
+  }
+
+  async reorderPools(orderedPoolIds: number[]): Promise<void> {
+    for (let i = 0; i < orderedPoolIds.length; i++) {
+      await supabase
+        .from("pools")
+        .update({ order_index: i + 1, updated_at: new Date().toISOString() })
+        .eq("id", orderedPoolIds[i]);
+    }
+  }
+
+  async assignPlayerToPool(
+    playerId: number,
+    poolId: number | null,
+    auctionOrder?: number,
+  ): Promise<void> {
+    let order = auctionOrder;
+    if (order === undefined && poolId) {
+      const { data } = await supabase
+        .from("players")
+        .select("auction_order")
+        .eq("pool_id", poolId)
+        .order("auction_order", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      order = (data?.auction_order || 0) + 1;
+    }
+
+    const { error } = await supabase
+      .from("players")
+      .update({
+        pool_id: poolId,
+        auction_order: poolId ? (order ?? 1) : 0,
+      })
+      .eq("id", playerId);
+
+    if (error) throw new Error(`Failed to assign player: ${error.message}`);
+  }
+
+  async reorderPlayersInPool(
+    poolId: number | null,
+    orderedPlayerIds: number[],
+  ): Promise<void> {
+    for (let i = 0; i < orderedPlayerIds.length; i++) {
+      await supabase
+        .from("players")
+        .update({ auction_order: i + 1 })
+        .eq("id", orderedPlayerIds[i]);
+    }
+  }
+
+  async autoGroupByRole(): Promise<{ poolsCreated: number; playersAssigned: number }> {
+    const rolesConfig = [
+      { name: "Set 1: Batsmen", role: "Batsman" },
+      { name: "Set 2: Bowlers", role: "Bowler" },
+      { name: "Set 3: All Rounders", role: "All Rounder" },
+      { name: "Set 4: Wicket Keepers", role: "Wicket Keeper" },
+    ];
+
+    let poolsCreated = 0;
+    let playersAssigned = 0;
+
+    for (let i = 0; i < rolesConfig.length; i++) {
+      const { name, role } = rolesConfig[i];
+      let { data: existingPool } = await supabase
+        .from("pools")
+        .select("id")
+        .eq("name", name)
+        .maybeSingle();
+
+      let poolId = existingPool?.id;
+      if (!poolId) {
+        const { data: newPool, error: createError } = await supabase
+          .from("pools")
+          .insert({ name, order_index: i + 1 })
+          .select("id")
+          .single();
+        if (createError) throw new Error(`Failed to create set: ${createError.message}`);
+        poolId = newPool.id;
+        poolsCreated++;
+      } else {
+        await supabase.from("pools").update({ order_index: i + 1 }).eq("id", poolId);
+      }
+
+      const { data: rolePlayers } = await supabase
+        .from("players")
+        .select("id")
+        .eq("role", role)
+        .order("eval_points", { ascending: false })
+        .order("base_price", { ascending: false });
+
+      if (rolePlayers && rolePlayers.length > 0) {
+        for (let j = 0; j < rolePlayers.length; j++) {
+          await supabase
+            .from("players")
+            .update({ pool_id: poolId, auction_order: j + 1 })
+            .eq("id", rolePlayers[j].id);
+          playersAssigned++;
+        }
+      }
+    }
+
+    return { poolsCreated, playersAssigned };
+  }
+
+  async poolUnsoldPlayers(poolName = "Accelerated Round - Unsold Players"): Promise<{ pool: Pool; count: number }> {
+    let { data: existingPool } = await supabase
+      .from("pools")
+      .select("*")
+      .eq("name", poolName)
+      .maybeSingle();
+
+    let pool: Pool;
+    if (existingPool) {
+      pool = {
+        id: existingPool.id,
+        name: existingPool.name,
+        orderIndex: existingPool.order_index,
+      };
+    } else {
+      const { data: maxOrder } = await supabase
+        .from("pools")
+        .select("order_index")
+        .order("order_index", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const nextOrder = (maxOrder?.order_index || 0) + 1;
+      const { data: newPool, error } = await supabase
+        .from("pools")
+        .insert({ name: poolName, order_index: nextOrder })
+        .select()
+        .single();
+      if (error) throw new Error(`Failed to create unsold pool: ${error.message}`);
+      pool = {
+        id: newPool.id,
+        name: newPool.name,
+        orderIndex: newPool.order_index,
+      };
+    }
+
+    const { data: unsoldPlayers, error: fetchError } = await supabase
+      .from("players")
+      .select("id")
+      .eq("status", "unsold")
+      .order("eval_points", { ascending: false });
+
+    if (fetchError) throw new Error(`Failed to fetch unsold players: ${fetchError.message}`);
+
+    const playerIds = (unsoldPlayers || []).map((p: { id: number }) => p.id);
+    for (let i = 0; i < playerIds.length; i++) {
+      await supabase
+        .from("players")
+        .update({ pool_id: pool.id, auction_order: i + 1 })
+        .eq("id", playerIds[i]);
+    }
+
+    return { pool, count: playerIds.length };
+  }
+
+  async seedOfficialTeams(): Promise<void> {
+    const officialTeams = [
+      {
+        name: "Chennai Super Kings",
+        slug: "chennai-super-kings",
+        logo_url: "/images/teams/csk.jpg",
+        border_color: "#F9CD00",
+        bg_gradient:
+          "bg-[linear-gradient(135deg,rgba(180,140,0,0.95)_0%,rgba(140,110,0,0.85)_45%,rgba(100,80,0,0.9)_100%)]",
+        starting_budget: 10000000,
+      },
+      {
+        name: "Mumbai Indians",
+        slug: "mumbai-indians",
+        logo_url: "/images/teams/mi.jpg",
+        border_color: "#045093",
+        bg_gradient:
+          "bg-[linear-gradient(135deg,rgba(4,80,147,0.95)_0%,rgba(2,50,93,0.85)_45%,rgba(1,30,70,0.9)_100%)]",
+        starting_budget: 10000000,
+      },
+      {
+        name: "Royal Challengers Bengaluru",
+        slug: "royal-challengers-bengaluru",
+        logo_url: "/images/teams/rcb.jpg",
+        border_color: "#DA1212",
+        bg_gradient:
+          "bg-[linear-gradient(135deg,rgba(218,18,18,0.95)_0%,rgba(180,15,15,0.85)_45%,rgba(140,10,10,0.9)_100%)]",
+        starting_budget: 10000000,
+      },
+      {
+        name: "Kolkata Knight Riders",
+        slug: "kolkata-knight-riders",
+        logo_url: "/images/teams/kkr.jpeg",
+        border_color: "#3E1F47",
+        bg_gradient:
+          "bg-[linear-gradient(135deg,rgba(62,31,71,0.95)_0%,rgba(45,20,55,0.85)_45%,rgba(30,15,40,0.9)_100%)]",
+        starting_budget: 10000000,
+      },
+      {
+        name: "Delhi Capitals",
+        slug: "delhi-capitals",
+        logo_url: "/images/teams/dc.jpg",
+        border_color: "#004C97",
+        bg_gradient:
+          "bg-[linear-gradient(135deg,rgba(0,76,151,0.95)_0%,rgba(0,60,120,0.85)_45%,rgba(0,45,95,0.9)_100%)]",
+        starting_budget: 10000000,
+      },
+      {
+        name: "Sunrisers Hyderabad",
+        slug: "sunrisers-hyderabad",
+        logo_url: "/images/teams/srh.webp",
+        border_color: "#F26522",
+        bg_gradient:
+          "bg-[linear-gradient(135deg,rgba(242,101,34,0.95)_0%,rgba(200,80,25,0.85)_45%,rgba(160,65,20,0.9)_100%)]",
+        starting_budget: 10000000,
+      },
+      {
+        name: "Rajasthan Royals",
+        slug: "rajasthan-royals",
+        logo_url: "/images/teams/rr.png",
+        border_color: "#EA1A8C",
+        bg_gradient:
+          "bg-[linear-gradient(135deg,rgba(234,26,140,0.95)_0%,rgba(190,20,115,0.85)_45%,rgba(150,15,90,0.9)_100%)]",
+        starting_budget: 10000000,
+      },
+      {
+        name: "Punjab Kings",
+        slug: "punjab-kings",
+        logo_url: "/images/teams/pbks.png",
+        border_color: "#C8102E",
+        bg_gradient:
+          "bg-[linear-gradient(135deg,rgba(200,16,46,0.95)_0%,rgba(160,10,35,0.85)_45%,rgba(120,8,25,0.9)_100%)]",
+        starting_budget: 10000000,
+      },
+      {
+        name: "Gujarat Titans",
+        slug: "gujarat-titans",
+        logo_url: "/images/teams/gt.png",
+        border_color: "#0A1931",
+        bg_gradient:
+          "bg-[linear-gradient(135deg,rgba(10,25,49,0.95)_0%,rgba(7,20,40,0.85)_45%,rgba(5,15,30,0.9)_100%)]",
+        starting_budget: 10000000,
+      },
+      {
+        name: "Lucknow Super Giants",
+        slug: "lucknow-super-giants",
+        logo_url: "/images/teams/lsg.png",
+        border_color: "#0097A7",
+        bg_gradient:
+          "bg-[linear-gradient(135deg,rgba(0,151,167,0.95)_0%,rgba(0,120,135,0.85)_45%,rgba(0,90,110,0.9)_100%)]",
+        starting_budget: 10000000,
+      },
+    ];
+
+    for (const t of officialTeams) {
+      await supabase.from("teams").upsert(t, { onConflict: "name" });
+    }
+  }
+
   async resetAuction(): Promise<void> {
     const { error } = await supabase
       .from("players")
@@ -398,6 +856,35 @@ class SupabaseService {
       .neq("id", 0); // Update all rows
 
     if (error) throw new Error(`Failed to reset auction: ${error.message}`);
+
+    await supabase.from("auction_log").delete().neq("id", 0);
+  }
+
+  async getUnsoldPlayerNames(): Promise<Set<string>> {
+    try {
+      const { data, error } = await supabase
+        .from("auction_log")
+        .select("player_name")
+        .eq("action", "unsold");
+      if (error || !data) return new Set();
+      return new Set(data.map((r: { player_name: string }) => r.player_name));
+    } catch {
+      return new Set();
+    }
+  }
+
+  async clearAllUnsold(): Promise<number> {
+    try {
+      const { data } = await supabase
+        .from("auction_log")
+        .select("id")
+        .eq("action", "unsold");
+      const count = data ? data.length : 0;
+      await supabase.from("auction_log").delete().eq("action", "unsold");
+      return count;
+    } catch {
+      return 0;
+    }
   }
 
   async bulkImportPlayers(
@@ -419,28 +906,44 @@ class SupabaseService {
     const errors: string[] = [];
     let inserted = 0;
 
+    const normalizeRole = (r?: string): string => {
+      const lower = (r || "").toLowerCase().replace(/[-_\s]+/g, "");
+      if (lower.includes("all") || lower.includes("ar") || lower.includes("round"))
+        return "All Rounder";
+      if (lower.includes("keep") || lower.includes("wk") || lower.includes("wicket"))
+        return "Wicket Keeper";
+      if (lower.includes("bowl")) return "Bowler";
+      return "Batsman";
+    };
+
     for (let i = 0; i < players.length; i++) {
       const p = players[i];
+      if (!p.name || !p.name.trim()) {
+        errors.push(`Row ${i + 2}: Player name is missing`);
+        continue;
+      }
+
+      const validRole = normalizeRole(p.role);
+
       const { error } = await supabase.from("players").insert({
-        sr_no: i + 1,
-        name: p.name,
-        age: p.age || null,
-        country: p.country || "India",
-        t20_matches: p.t20_matches || 0,
-        runs: p.runs || null,
-        batting_sr: p.batting_sr || null,
-        wickets: p.wickets || null,
-        economy: p.economy || null,
-        eval_points: p.eval_points || 0,
-        base_price: p.base_price || 400000,
-        role: p.role || "Batsman",
-        image_url: p.image_url || null,
+        name: p.name.trim(),
+        age: p.age && !isNaN(Number(p.age)) ? Number(p.age) : null,
+        country: p.country?.trim() || "India",
+        t20_matches: p.t20_matches && !isNaN(Number(p.t20_matches)) ? Number(p.t20_matches) : 0,
+        runs: p.runs && !isNaN(Number(p.runs)) ? Number(p.runs) : null,
+        batting_sr: p.batting_sr && !isNaN(Number(p.batting_sr)) ? Number(p.batting_sr) : null,
+        wickets: p.wickets && !isNaN(Number(p.wickets)) ? Number(p.wickets) : null,
+        economy: p.economy && !isNaN(Number(p.economy)) ? Number(p.economy) : null,
+        eval_points: p.eval_points && !isNaN(Number(p.eval_points)) ? Number(p.eval_points) : 0,
+        base_price: p.base_price && !isNaN(Number(p.base_price)) ? Number(p.base_price) : 400000,
+        role: validRole,
+        image_url: p.image_url?.trim() || null,
         status: "unsold",
         sold_price: 0,
       });
 
       if (error) {
-        errors.push(`Row ${i + 1} (${p.name}): ${error.message}`);
+        errors.push(`Row ${i + 2} (${p.name}): ${error.message}`);
       } else {
         inserted++;
       }
