@@ -289,9 +289,7 @@ export function LandingPage() {
             className="flex items-center gap-3 cursor-pointer"
             onClick={() => setLocation("/")}
           >
-            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#fe6804] to-[#ef4123] flex items-center justify-center font-bold text-lg shadow-md tracking-wider">
-              IPL
-            </div>
+            <img src="/IPL-logo.png" alt="IPL Logo" className="h-10 w-auto" />
             <div>
               <h1 className="[font-family:'Work_Sans',Helvetica] font-bold text-lg sm:text-xl leading-tight">
                 <span className="text-white">IPL AUCTION </span>

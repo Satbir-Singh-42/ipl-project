@@ -15,8 +15,6 @@ CREATE TABLE IF NOT EXISTS tournaments (
   description TEXT DEFAULT '',
   currency_symbol TEXT DEFAULT '₹',
   currency_code TEXT DEFAULT 'INR',
-  banner_url TEXT,
-  logo_url TEXT,
   is_locked BOOLEAN DEFAULT false,
   is_private BOOLEAN DEFAULT false,
   room_password TEXT DEFAULT '',
@@ -265,7 +263,6 @@ INSERT INTO auction_settings (tournament_id) VALUES (1) ON CONFLICT (tournament_
 CREATE INDEX IF NOT EXISTS idx_pools_tournament_id ON pools(tournament_id);
 CREATE INDEX IF NOT EXISTS idx_players_tournament_id ON players(tournament_id);
 CREATE INDEX IF NOT EXISTS idx_players_status ON players(status);
-CREATE INDEX IF NOT EXISTS idx_players_team_id ON players(team_id);
 CREATE INDEX IF NOT EXISTS idx_players_pool_id ON players(pool_id);
 CREATE INDEX IF NOT EXISTS idx_teams_tournament_id ON teams(tournament_id);
 CREATE INDEX IF NOT EXISTS idx_auction_log_tournament_id ON auction_log(tournament_id);

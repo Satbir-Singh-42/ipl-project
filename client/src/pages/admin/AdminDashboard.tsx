@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTournament } from "@/contexts/TournamentContext";
 import {
   Users,
   Trophy,
@@ -20,6 +21,7 @@ import { AdminHeader } from "@/components/AdminHeader";
 export function AdminDashboard() {
   const { user, role, displayName } = useAuth();
   const [, setLocation] = useLocation();
+  const { currentTournament } = useTournament();
   const [stats, setStats] = useState({
     totalPlayers: 0,
     soldPlayers: 0,
@@ -86,6 +88,10 @@ export function AdminDashboard() {
     },
   ];
 
+  const publicHref = currentTournament?.room_code
+    ? `/room/${currentTournament.room_code}`
+    : "/";
+
   const actionCards = [
     {
       title: "Manage Players",
@@ -146,7 +152,7 @@ export function AdminDashboard() {
       title: "Public Dashboard",
       description:
         "Switch to the public view showing team rankings, leaderboard, and playing XI selection.",
-      href: "/",
+      href: publicHref,
       icon: Home,
       buttonText: "View Public Dashboard",
       gradient:
