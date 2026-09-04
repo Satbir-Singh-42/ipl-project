@@ -6,7 +6,6 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { AlertTriangle, Sparkles, Trash2, HelpCircle } from "lucide-react";
 
 export interface ConfirmDialogProps {
   isOpen: boolean;
@@ -31,70 +30,43 @@ export function ConfirmDialog({
   variant = "primary",
   isLoading = false,
 }: ConfirmDialogProps) {
-  const getIcon = () => {
-    switch (variant) {
-      case "danger":
-        return <Trash2 className="w-5 h-5 text-red-400" />;
-      case "warning":
-        return <AlertTriangle className="w-5 h-5 text-amber-400" />;
-      case "info":
-        return <Sparkles className="w-5 h-5 text-[#00BCD4]" />;
-      default:
-        return <HelpCircle className="w-5 h-5 text-[#fe6804]" />;
-    }
-  };
-
-  const getIconBg = () => {
-    switch (variant) {
-      case "danger":
-        return "bg-red-500/15 border-red-500/30";
-      case "warning":
-        return "bg-amber-500/15 border-amber-500/30";
-      case "info":
-        return "bg-[#00BCD4]/15 border-[#00BCD4]/30";
-      default:
-        return "bg-[#fe6804]/15 border-[#fe6804]/30";
-    }
-  };
-
   const getConfirmButtonClasses = () => {
     switch (variant) {
       case "danger":
-        return "bg-red-600 hover:bg-red-500 text-white";
+        return "bg-[#ef4444] hover:bg-[#dc2626] text-white shadow-red-500/20";
       case "warning":
-        return "bg-amber-600 hover:bg-amber-500 text-white";
+        return "bg-[#fe6804] hover:bg-[#e05b03] text-white shadow-orange-500/20";
       case "info":
-        return "bg-[#00BCD4] hover:bg-[#00BCD4]/90 text-black font-bold";
+        return "bg-[#00BCD4] hover:bg-[#00acc1] text-black shadow-cyan-500/20";
       default:
-        return "bg-[#fe6804] hover:bg-[#fe6804]/90 text-white font-bold";
+        return "bg-[#fe6804] hover:bg-[#e05b03] text-white shadow-orange-500/20";
     }
   };
 
+  // Format title with clean question mark if not present
+  const formattedTitle = title.endsWith("?") ? title : `${title}?`;
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="bg-[#141a2e] border border-white/15 text-white max-w-md p-6 rounded-2xl shadow-2xl [font-family:'Work_Sans',Helvetica]">
-        <div className="flex items-start gap-4">
-          <div className={`p-3 rounded-xl border ${getIconBg()} shrink-0`}>
-            {getIcon()}
-          </div>
-          <div className="space-y-1.5 flex-1">
-            <DialogHeader className="text-left">
-              <DialogTitle className="text-base font-bold text-white tracking-tight">
-                {title}
-              </DialogTitle>
-            </DialogHeader>
-            <DialogDescription className="text-xs sm:text-sm text-white/70 leading-relaxed">
-              {description}
-            </DialogDescription>
-          </div>
-        </div>
+      <DialogContent
+        style={{ backgroundColor: "#181820" }}
+        className="!bg-[#181820] border border-white/10 text-white max-w-md w-[92vw] sm:w-full p-5 sm:p-6 rounded-2xl sm:rounded-3xl shadow-2xl [font-family:'Work_Sans',Helvetica] gap-0"
+      >
+        <DialogHeader className="text-left space-y-1.5 pr-6">
+          <DialogTitle className="text-base sm:text-lg font-bold text-white tracking-tight leading-snug">
+            {formattedTitle}
+          </DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm text-zinc-300 leading-relaxed font-normal whitespace-pre-line">
+            {description}
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className="flex items-center justify-end gap-2.5 mt-6 pt-4 border-t border-white/10">
+        <div className="flex items-center justify-end gap-2.5 mt-4 pt-1">
           <button
             type="button"
             onClick={onClose}
             disabled={isLoading}
-            className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold border border-white/15 hover:border-white/30 transition-all active:scale-95 disabled:opacity-50"
+            className="px-4 py-1.5 rounded-full bg-[#272732] hover:bg-[#333342] text-white text-xs sm:text-sm font-medium border border-white/10 transition-all active:scale-95 disabled:opacity-50"
           >
             {cancelText}
           </button>
@@ -105,10 +77,10 @@ export function ConfirmDialog({
               onClose();
             }}
             disabled={isLoading}
-            className={`px-5 py-2 rounded-xl text-xs font-semibold shadow-lg transition-all disabled:opacity-50 flex items-center gap-2 ${getConfirmButtonClasses()}`}
+            className={`px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold shadow-md transition-all active:scale-95 disabled:opacity-50 flex items-center gap-1.5 ${getConfirmButtonClasses()}`}
           >
             {isLoading && (
-              <div className="w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
+              <div className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
             )}
             {confirmText}
           </button>
@@ -117,3 +89,4 @@ export function ConfirmDialog({
     </Dialog>
   );
 }
+

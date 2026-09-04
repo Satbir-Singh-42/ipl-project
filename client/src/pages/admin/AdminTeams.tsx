@@ -17,6 +17,11 @@ import {
   X,
   Upload,
   Pipette,
+  ExternalLink,
+  Coins,
+  TrendingUp,
+  Crown,
+  Medal,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -28,8 +33,11 @@ import { formatIndianNumber } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
 import { AdminHeader } from "@/components/AdminHeader";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   getAuctionRules,
+  fetchAuctionRules,
+  subscribeToRulesUpdate,
   saveAuctionRules,
   resetAuctionRules,
   type AuctionSquadRules,
@@ -81,6 +89,22 @@ export function AdminTeams() {
 
   // Editing single budgets in list
   const [editingBudgets, setEditingBudgets] = useState<Record<string, string>>({});
+
+  // Confirmation Dialog State
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    confirmText?: string;
+    cancelText?: string;
+    variant?: "danger" | "warning" | "info" | "primary";
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: "",
+    description: "",
+    onConfirm: () => {},
+  });
 
   // Add / Edit Modal State
   const [showTeamModal, setShowTeamModal] = useState(false);
@@ -134,6 +158,10 @@ export function AdminTeams() {
 
   useEffect(() => {
     loadTeams();
+    // Load fresh dynamic rules from Supabase and subscribe
+    fetchAuctionRules().then((fresh) => setRules(fresh));
+    const unsub = subscribeToRulesUpdate((updated) => setRules(updated));
+    return unsub;
   }, []);
 
   const openAddModal = () => {
@@ -160,51 +188,56 @@ export function AdminTeams() {
     setShowTeamModal(true);
   };
 
-  const handleSaveTeamModal = async (e: React.FormEvent) => {
+  const handleSaveTeam = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!teamForm.name.trim()) {
       toast({ title: "Team name is required", variant: "destructive" });
       return;
     }
 
-    const budget = parseFloat(teamForm.startingBudget);
-    if (isNaN(budget) || budget < 0) {
-      toast({ title: "Starting budget must be a positive number", variant: "destructive" });
-      return;
-    }
+    const startingBudgetNum = parseFloat(teamForm.startingBudget) || rules.startingBudget || 10000000;
+    const cleanBorder = sanitizeHexColor(teamForm.borderColor);
 
-    const cleanColor = sanitizeHexColor(teamForm.borderColor);
     setIsSubmitting(true);
     try {
-      let finalLogoUrl = teamForm.logoUrl.trim();
-      if (finalLogoUrl && (finalLogoUrl.startsWith("http://") || finalLogoUrl.startsWith("https://"))) {
-        finalLogoUrl = await supabaseService.uploadImageFromUrl("team-logos", finalLogoUrl);
-      }
-
       if (editingTeam) {
-        // Update existing team
-        await supabaseService.updateTeam(editingTeam.teamId, {
-          name: teamForm.name.trim(),
-          logo_url: finalLogoUrl,
-          border_color: cleanColor,
-          starting_budget: budget,
-        });
-        toast({ title: `Team "${teamForm.name}" updated successfully` });
+        // UPDATE existing team
+        const { error } = await supabase
+          .from("teams")
+          .update({
+            name: teamForm.name.trim(),
+            logo_url: teamForm.logoUrl,
+            border_color: cleanBorder,
+            starting_budget: startingBudgetNum,
+          })
+          .eq("slug", editingTeam.teamId);
+
+        if (error) throw error;
+        toast({ title: `Franchise "${teamForm.name}" updated successfully` });
       } else {
-        // Create new team
-        await supabaseService.createTeam({
+        // CREATE new team
+        const slug =
+          teamForm.slug.trim() ||
+          teamForm.name
+            .toLowerCase()
+            .replace(/\s+/g, "-")
+            .replace(/[^a-z0-9-]/g, "");
+
+        const { error } = await supabase.from("teams").insert({
           name: teamForm.name.trim(),
-          slug: teamForm.slug.trim() || undefined,
-          logo_url: finalLogoUrl,
-          border_color: cleanColor,
-          starting_budget: budget,
+          slug: slug,
+          logo_url: teamForm.logoUrl,
+          border_color: cleanBorder,
+          starting_budget: startingBudgetNum,
         });
-        toast({ title: `Team "${teamForm.name}" created successfully` });
+
+        if (error) throw error;
+        toast({ title: `Franchise "${teamForm.name}" created successfully` });
       }
 
       setShowTeamModal(false);
       await loadTeams();
-    } catch (err) {
+    } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to save team";
       toast({ title: message, variant: "destructive" });
     } finally {
@@ -212,33 +245,32 @@ export function AdminTeams() {
     }
   };
 
-  const handleDeleteTeam = async (team: TeamStats) => {
-    if (team.playersCount > 0) {
-      if (
-        !confirm(
-          `Warning: "${team.teamName}" currently has ${team.playersCount} players assigned. Deleting this team will remove it from the roster. Proceed?`
-        )
-      ) {
-        return;
-      }
-    } else {
-      if (!confirm(`Are you sure you want to remove team "${team.teamName}"?`)) {
-        return;
-      }
-    }
-
-    try {
-      await supabaseService.deleteTeam(team.teamId);
-      toast({ title: `Team "${team.teamName}" deleted from database` });
-      await loadTeams();
-      queryClient.invalidateQueries({ queryKey: ["teams"] });
-      queryClient.invalidateQueries({ queryKey: ["leaderboard"] });
-      queryClient.invalidateQueries({ queryKey: ["players"] });
-      queryClient.invalidateQueries({ queryKey: ["soldPlayers"] });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to delete team";
-      toast({ title: message, variant: "destructive" });
-    }
+  const handleDeleteTeam = (team: TeamStats) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: "Delete franchise",
+      description:
+        team.playersCount > 0
+          ? `This will delete ${team.teamName}.\n\nWarning: ${team.playersCount} players assigned to this franchise will be reset back to the auction pool.`
+          : `This will permanently delete ${team.teamName} from the database.`,
+      confirmText: "Delete",
+      variant: "danger",
+      onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+        try {
+          await supabaseService.deleteTeam(team.teamId);
+          toast({ title: `Team "${team.teamName}" deleted from database` });
+          await loadTeams();
+          queryClient.invalidateQueries({ queryKey: ["teams"] });
+          queryClient.invalidateQueries({ queryKey: ["leaderboard"] });
+          queryClient.invalidateQueries({ queryKey: ["players"] });
+          queryClient.invalidateQueries({ queryKey: ["soldPlayers"] });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Failed to delete team";
+          toast({ title: message, variant: "destructive" });
+        }
+      },
+    });
   };
 
   const handleSaveBudget = async (teamId: string) => {
@@ -258,40 +290,42 @@ export function AdminTeams() {
     }
   };
 
-  const handleApplyBudgetToAll = async () => {
-    if (
-      !confirm(
-        `Update starting budget of ALL ${teams.length} teams to ₹${formatIndianNumber(
-          rules.startingBudget
-        )}?`
-      )
-    ) {
-      return;
-    }
+  const handleApplyBudgetToAll = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: "Update all team budgets",
+      description: `This will update the starting purse of all ${teams.length} franchises to ₹${formatIndianNumber(
+        rules.startingBudget
+      )}.`,
+      confirmText: "Update",
+      variant: "primary",
+      onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+        setIsSubmitting(true);
+        try {
+          const { error } = await supabase
+            .from("teams")
+            .update({ starting_budget: rules.startingBudget })
+            .neq("id", 0);
 
-    setIsSubmitting(true);
-    try {
-      const { error } = await supabase
-        .from("teams")
-        .update({ starting_budget: rules.startingBudget })
-        .neq("id", 0);
-
-      if (error) throw new Error(error.message);
-      toast({
-        title: `All ${teams.length} team budgets updated to ₹${formatIndianNumber(
-          rules.startingBudget
-        )}`,
-      });
-      await loadTeams();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to update budgets";
-      toast({ title: message, variant: "destructive" });
-    } finally {
-      setIsSubmitting(false);
-    }
+          if (error) throw new Error(error.message);
+          toast({
+            title: `All ${teams.length} team budgets updated to ₹${formatIndianNumber(
+              rules.startingBudget
+            )}`,
+          });
+          await loadTeams();
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Failed to update budgets";
+          toast({ title: message, variant: "destructive" });
+        } finally {
+          setIsSubmitting(false);
+        }
+      },
+    });
   };
 
-  const handleSaveRulesSubmit = (e: React.FormEvent) => {
+  const handleSaveRulesSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (rules.maxPlayers <= 0 || rules.minPlayers <= 0) {
       toast({ title: "Player limits must be greater than zero", variant: "destructive" });
@@ -305,21 +339,53 @@ export function AdminTeams() {
       toast({ title: "Overseas limit cannot exceed max players", variant: "destructive" });
       return;
     }
+    if (rules.enableCaptainMultiplier) {
+      if (rules.captainMultiplier <= 0 || rules.viceCaptainMultiplier <= 0) {
+        toast({ title: "Multipliers must be greater than zero", variant: "destructive" });
+        return;
+      }
+    }
 
-    saveAuctionRules(rules);
-    toast({ title: "Auction and squad rules saved successfully" });
+    setIsSubmitting(true);
+    try {
+      const result = await saveAuctionRules(rules);
+      if (result.success) {
+        toast({ title: "Auction and squad rules saved and synced to database" });
+      } else {
+        toast({
+          title: "Rules saved locally",
+          description: result.error,
+        });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleResetRulesClick = () => {
-    if (!confirm("Reset all auction rules to system defaults?")) return;
-    const defaultRules = resetAuctionRules();
-    setRules(defaultRules);
-    toast({ title: "Auction rules reset to defaults" });
+    setConfirmDialog({
+      isOpen: true,
+      title: "Reset Rules",
+      description: "Reset all auction rules to system defaults?",
+      confirmText: "Reset",
+      variant: "warning",
+      onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+        const defaultRules = await resetAuctionRules();
+        setRules(defaultRules);
+        toast({ title: "Auction rules reset to defaults" });
+      },
+    });
   };
 
   return (
     <div className="bg-[#18184a] w-full min-h-screen text-white flex flex-col">
       <AdminHeader activeTab="teams" />
+
+      <ConfirmDialog 
+        {...confirmDialog} 
+        onClose={() => setConfirmDialog(prev => ({...prev, isOpen: false}))} 
+      />
 
       <section className="w-full bg-[#18184a] p-2 sm:p-4 md:p-6 py-3 sm:py-5 flex-1">
         <div className="w-full bg-wwwiplt20comconcrete-80 rounded-xl md:rounded-2xl backdrop-blur-[28.09px] p-2.5 sm:p-4 md:p-5">
@@ -386,7 +452,7 @@ export function AdminTeams() {
                     </div>
                   </div>
 
-                  {/* Teams Cards List */}
+                  {/* Teams Cards Grid (Matching IPL Teams Cards) */}
                   {isLoading ? (
                     <div className="text-center py-12 text-gray-400">Loading teams...</div>
                   ) : teams.length === 0 ? (
@@ -405,23 +471,21 @@ export function AdminTeams() {
                       </Button>
                     </div>
                   ) : (
-                    <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6 content-start">
                       {teams.map((team) => {
-                        const isSquadFull = team.playersCount >= rules.maxPlayers;
-                        const isOverseasFull = team.overseasCount >= rules.maxOverseas;
+                        const borderColor =
+                          team.borderColor || supabaseService.getTeamBorderColor(team.teamName);
+                        const bgGradient =
+                          team.bgGradient || supabaseService.getTeamGradient(team.teamName);
 
                         return (
                           <div
                             key={team.teamId}
-                            className="bg-[#1a2332] border border-[#2a3441] hover:border-[#fe6804]/50 rounded-xl p-4 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 transition-colors"
+                            className={`h-full min-w-0 flex flex-col items-center justify-between gap-4 p-3.5 rounded-3xl overflow-hidden border-2 border-solid ${borderColor} ${bgGradient} shadow-xl hover:ring-2 hover:ring-white/20 transition-all duration-200 relative group`}
                           >
-                            {/* Left: Logo + Name + Badges */}
-                            <div className="flex items-center gap-3.5">
-                              {/* Team Logo with dynamic border */}
-                              <div
-                                className="w-12 h-12 rounded-full overflow-hidden bg-black/40 flex items-center justify-center shrink-0 border-2 shadow-md"
-                                style={{ borderColor: team.borderColor || "#fe6804" }}
-                              >
+                            {/* Team Logo and Name Header */}
+                            <div className="flex flex-col items-center gap-2 pt-1 w-full">
+                              <div className="flex w-20 h-20 items-center justify-center rounded-full overflow-hidden border-2 border-white/20 bg-black/40 shadow-inner shrink-0">
                                 {team.logoUrl ? (
                                   <img
                                     src={team.logoUrl}
@@ -432,83 +496,83 @@ export function AdminTeams() {
                                     }}
                                   />
                                 ) : (
-                                  <span className="text-xs font-bold text-white uppercase">
-                                    {team.teamName.substring(0, 3)}
+                                  <span className="text-2xl font-bold text-white uppercase">
+                                    {supabaseService.getTeamInitials(team.teamName)}
                                   </span>
                                 )}
                               </div>
+                              <div className="text-center px-1">
+                                <span className="[font-family:'Work_Sans',Helvetica] font-semibold text-white text-sm sm:text-base tracking-[0] leading-5 line-clamp-1">
+                                  {team.teamName}
+                                </span>
+                              </div>
+                            </div>
 
-                              <div>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <h3 className="[font-family:'Work_Sans',Helvetica] font-bold text-base text-white">
-                                    {team.teamName}
-                                  </h3>
+                            {/* Stats Content Box matching IPL Teams exact layout */}
+                            <div className="flex flex-col items-start w-full bg-wwwiplt20comblack-3 p-0 flex-1 rounded-2xl overflow-hidden border border-[#ffffff1a]">
+                              {/* Funds Remaining */}
+                              <div className="flex flex-col items-start pb-3 w-full border-b border-solid border-[#ffffff1a]">
+                                <div className="flex flex-col items-center py-2 w-full">
+                                  <span className="[font-family:'Work_Sans',Helvetica] font-normal text-wwwiplt-2-0comwhite text-sm text-center tracking-[0] leading-6">
+                                    Funds Remaining
+                                  </span>
+                                </div>
+                                <div className="flex flex-col items-center w-full">
+                                  <span className="[font-family:'Work_Sans',Helvetica] font-bold text-wwwiplt-2-0comwhite text-lg text-center tracking-[0] leading-7">
+                                    ₹{formatIndianNumber(team.fundsRemaining)}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Overseas Players & Total Players */}
+                              <div className="flex items-stretch justify-center w-full flex-1">
+                                <div className="pr-2 border-r border-solid border-[#ffffff1a] flex flex-col justify-between flex-1">
+                                  <div className="flex flex-col items-center py-2 w-full">
+                                    <span className="[font-family:'Work_Sans',Helvetica] font-normal text-wwwiplt-2-0comwhite text-sm text-center tracking-[0] leading-6">
+                                      Overseas Players
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-col items-center pb-2 w-full">
+                                    <span className="[font-family:'Work_Sans',Helvetica] font-bold text-wwwiplt-2-0comwhite text-lg text-center tracking-[0] leading-7">
+                                      {team.overseasCount || 0}
+                                    </span>
+                                  </div>
                                 </div>
 
-                                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/60 mt-1">
-                                  <span>Spent: ₹{formatIndianNumber(team.totalSpent)}</span>
-                                  <span>
-                                    Remaining:{" "}
-                                    <strong className="text-white">
-                                      ₹{formatIndianNumber(team.fundsRemaining)}
-                                    </strong>
-                                  </span>
-                                  <span
-                                    className={isSquadFull ? "text-amber-400 font-semibold" : ""}
-                                  >
-                                    Players: {team.playersCount} / {rules.maxPlayers}
-                                  </span>
-                                  <span
-                                    className={isOverseasFull ? "text-amber-400 font-semibold" : ""}
-                                  >
-                                    Overseas: {team.overseasCount} / {rules.maxOverseas}
-                                  </span>
+                                <div className="pl-2 flex flex-col justify-between flex-1">
+                                  <div className="flex flex-col items-center py-2 w-full">
+                                    <span className="[font-family:'Work_Sans',Helvetica] font-normal text-wwwiplt-2-0comwhite text-sm text-center tracking-[0] leading-6">
+                                      Total Players
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-col items-center pb-2 w-full">
+                                    <span className="[font-family:'Work_Sans',Helvetica] font-bold text-wwwiplt-2-0comwhite text-lg text-center tracking-[0] leading-7">
+                                      {team.playersCount || 0}
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
                             </div>
 
-                            {/* Right: Budget Editor + Edit/Delete Buttons */}
-                            <div className="flex flex-wrap items-center gap-3 self-end lg:self-auto w-full lg:w-auto justify-end">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-white/50 hidden sm:inline">
-                                  Starting Budget:
-                                </span>
-                                <Input
-                                  type="number"
-                                  value={editingBudgets[team.teamId] || ""}
-                                  onChange={(e) =>
-                                    setEditingBudgets({
-                                      ...editingBudgets,
-                                      [team.teamId]: e.target.value,
-                                    })
-                                  }
-                                  className="w-28 sm:w-32 h-8 px-2.5 rounded-lg bg-[#0f1629] border-[#2a3441] text-white text-xs sm:text-sm focus:ring-1 focus:ring-[#fe6804]"
-                                />
-                                <button
-                                  onClick={() => handleSaveBudget(team.teamId)}
-                                  title="Save Starting Budget"
-                                  className="p-2 rounded-lg bg-[#fe6804]/20 text-[#fe6804] hover:bg-[#fe6804]/30 transition-colors"
-                                >
-                                  <Save className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-
-                              <div className="flex items-center gap-1.5 border-l border-[#2a3441] pl-2">
-                                <button
-                                  onClick={() => openEditModal(team)}
-                                  title="Edit Team Name, Logo & Color"
-                                  className="p-2 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteTeam(team)}
-                                  title="Delete Team"
-                                  className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
+                            {/* Admin Action Controls: Roster and Edit */}
+                            <div className="flex items-center justify-between gap-2.5 w-full pt-1">
+                              <Link
+                                href={`/team/${team.teamId}`}
+                                title="View Public Roster & Dashboard"
+                                className="flex-1 py-2 px-3 rounded-2xl bg-black/40 hover:bg-black/60 text-white/90 hover:text-white border border-white/20 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-sm"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5 text-[#00BCD4]" />
+                                <span>Roster</span>
+                              </Link>
+                              <button
+                                type="button"
+                                onClick={() => openEditModal(team)}
+                                title="Edit Franchise Details, Budget & Colors"
+                                className="flex-1 py-2 px-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white/90 hover:text-white border border-white/20 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-sm"
+                              >
+                                <Edit2 className="w-3.5 h-3.5 text-white/80" />
+                                <span>Edit</span>
+                              </button>
                             </div>
                           </div>
                         );
@@ -751,6 +815,293 @@ export function AdminTeams() {
                     </div>
                   </div>
 
+                  {/* Section 4: Playing XI Roster Composition Requirements */}
+                  <div className="bg-[#1a2332] border border-[#2a3441] rounded-xl p-5 space-y-4">
+                    <div className="flex items-center gap-2 border-b border-[#2a3441] pb-3">
+                      <Shield className="w-5 h-5 text-[#00BCD4]" />
+                      <h4 className="font-bold text-sm text-white uppercase tracking-wider">
+                        Playing XI Composition Rules
+                      </h4>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-white/80 mb-1">
+                          Total Players in Playing XI
+                        </label>
+                        <Input
+                          type="number"
+                          value={rules.playingXITotal}
+                          onChange={(e) =>
+                            setRules({
+                              ...rules,
+                              playingXITotal: parseInt(e.target.value) || 0,
+                            })
+                          }
+                          className="bg-[#0f1629] border-[#2a3441] text-white focus:ring-[#fe6804]"
+                        />
+                        <p className="text-[11px] text-white/50 mt-1">
+                          Standard cricket team match lineup (default: 11).
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-white/80 mb-1">
+                          Batsmen Range (Min - Max)
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            placeholder="Min"
+                            value={rules.batsmenMin}
+                            onChange={(e) =>
+                              setRules({
+                                ...rules,
+                                batsmenMin: parseInt(e.target.value) || 0,
+                              })
+                            }
+                            className="bg-[#0f1629] border-[#2a3441] text-white focus:ring-[#fe6804]"
+                          />
+                          <span className="text-white/40 text-xs">to</span>
+                          <Input
+                            type="number"
+                            placeholder="Max"
+                            value={rules.batsmenMax}
+                            onChange={(e) =>
+                              setRules({
+                                ...rules,
+                                batsmenMax: parseInt(e.target.value) || 0,
+                              })
+                            }
+                            className="bg-[#0f1629] border-[#2a3441] text-white focus:ring-[#fe6804]"
+                          />
+                        </div>
+                        <p className="text-[11px] text-white/50 mt-1">
+                          Specialist batsmen required in starting XI (default: 2 to 5).
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-white/80 mb-1">
+                          Wicket-Keepers (Min - Max)
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            placeholder="Min"
+                            value={rules.wkMin}
+                            onChange={(e) =>
+                              setRules({
+                                ...rules,
+                                wkMin: parseInt(e.target.value) || 0,
+                              })
+                            }
+                            className="bg-[#0f1629] border-[#2a3441] text-white focus:ring-[#fe6804]"
+                          />
+                          <span className="text-white/40 text-xs">to</span>
+                          <Input
+                            type="number"
+                            placeholder="Max"
+                            value={rules.wkMax}
+                            onChange={(e) =>
+                              setRules({
+                                ...rules,
+                                wkMax: parseInt(e.target.value) || 0,
+                              })
+                            }
+                            className="bg-[#0f1629] border-[#2a3441] text-white focus:ring-[#fe6804]"
+                          />
+                        </div>
+                        <p className="text-[11px] text-white/50 mt-1">
+                          Designated wicket-keepers required (default: 1 to 3).
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-white/80 mb-1">
+                          Min All-Rounders
+                        </label>
+                        <Input
+                          type="number"
+                          value={rules.allRoundersMin}
+                          onChange={(e) =>
+                            setRules({
+                              ...rules,
+                              allRoundersMin: parseInt(e.target.value) || 0,
+                            })
+                          }
+                          className="bg-[#0f1629] border-[#2a3441] text-white focus:ring-[#fe6804]"
+                        />
+                        <p className="text-[11px] text-white/50 mt-1">
+                          Minimum all-rounders required (default: 1).
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-white/80 mb-1">
+                          Min Specialist Bowlers
+                        </label>
+                        <Input
+                          type="number"
+                          value={rules.bowlersMin}
+                          onChange={(e) =>
+                            setRules({
+                              ...rules,
+                              bowlersMin: parseInt(e.target.value) || 0,
+                            })
+                          }
+                          className="bg-[#0f1629] border-[#2a3441] text-white focus:ring-[#fe6804]"
+                        />
+                        <p className="text-[11px] text-white/50 mt-1">
+                          Minimum bowlers in match lineup (default: 2).
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-white/80 mb-1">
+                          Playoff Qualifying Teams
+                        </label>
+                        <Input
+                          type="number"
+                          value={rules.teamsQualifying}
+                          onChange={(e) =>
+                            setRules({
+                              ...rules,
+                              teamsQualifying: parseInt(e.target.value) || 0,
+                            })
+                          }
+                          className="bg-[#0f1629] border-[#2a3441] text-white focus:ring-[#fe6804]"
+                        />
+                        <p className="text-[11px] text-white/50 mt-1">
+                          Top N teams highlighted for tournament progression (default: 8).
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 5: Captain & Vice-Captain Multipliers */}
+                  <div className="bg-[#1a2332] border border-[#2a3441] rounded-xl p-5 space-y-4">
+                    <div className="flex items-center justify-between border-b border-[#2a3441] pb-3 flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <Crown className="w-5 h-5 text-amber-400" />
+                        <h4 className="font-bold text-sm text-white uppercase tracking-wider">
+                          Captain & Vice-Captain Points Multipliers
+                        </h4>
+                      </div>
+
+                      {/* Enable/Disable Toggle Switch */}
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <span className="text-xs font-semibold text-white/80">
+                          {rules.enableCaptainMultiplier ? "Feature Enabled" : "Feature Disabled"}
+                        </span>
+                        <div className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={rules.enableCaptainMultiplier}
+                            onChange={(e) =>
+                              setRules({
+                                ...rules,
+                                enableCaptainMultiplier: e.target.checked,
+                              })
+                            }
+                            className="sr-only peer"
+                          />
+                          <div className="w-11 h-6 bg-[#0f1629] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[linear-gradient(180deg,rgba(255,107,0,1)_0%,rgba(239,65,35,1)_100%)] border border-[#2a3441]"></div>
+                        </div>
+                      </label>
+                    </div>
+
+                    <p className="text-xs text-white/60">
+                      When enabled, managers can designate a Captain and Vice-Captain in their Playing XI to receive boosted match evaluation points. When disabled, Captain selection buttons, badges, and multipliers are hidden.
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                      <div className={rules.enableCaptainMultiplier ? "" : "opacity-40 pointer-events-none"}>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Crown className="w-3.5 h-3.5 text-amber-400" />
+                          <label className="text-xs font-semibold text-white/80">
+                            Captain Point Multiplier (x)
+                          </label>
+                        </div>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="1"
+                          disabled={!rules.enableCaptainMultiplier}
+                          value={rules.captainMultiplier}
+                          onChange={(e) =>
+                            setRules({
+                              ...rules,
+                              captainMultiplier: parseFloat(e.target.value) || 1,
+                            })
+                          }
+                          className="bg-[#0f1629] border-[#2a3441] text-white focus:ring-[#fe6804]"
+                        />
+                        <p className="text-[11px] text-white/50 mt-1">
+                          Multiplier applied to Captain evaluation points (standard: 2.0x).
+                        </p>
+                      </div>
+
+                      <div className={rules.enableCaptainMultiplier ? "" : "opacity-40 pointer-events-none"}>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Medal className="w-3.5 h-3.5 text-slate-300" />
+                          <label className="text-xs font-semibold text-white/80">
+                            Vice-Captain Point Multiplier (x)
+                          </label>
+                        </div>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="1"
+                          disabled={!rules.enableCaptainMultiplier}
+                          value={rules.viceCaptainMultiplier}
+                          onChange={(e) =>
+                            setRules({
+                              ...rules,
+                              viceCaptainMultiplier: parseFloat(e.target.value) || 1,
+                            })
+                          }
+                          className="bg-[#0f1629] border-[#2a3441] text-white focus:ring-[#fe6804]"
+                        />
+                        <p className="text-[11px] text-white/50 mt-1">
+                          Multiplier applied to Vice-Captain evaluation points (standard: 1.5x).
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 6: Auction Automation Timers */}
+                  <div className="bg-[#1a2332] border border-[#2a3441] rounded-xl p-5 space-y-4">
+                    <div className="flex items-center gap-2 border-b border-[#2a3441] pb-3">
+                      <RefreshCw className="w-5 h-5 text-purple-400" />
+                      <h4 className="font-bold text-sm text-white uppercase tracking-wider">
+                        Live Auction Automation Timers
+                      </h4>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-white/80 mb-1">
+                          Auto-Advance Delay after Sold/Unsold (ms)
+                        </label>
+                        <Input
+                          type="number"
+                          value={rules.autoAdvanceDelayMs}
+                          onChange={(e) =>
+                            setRules({
+                              ...rules,
+                              autoAdvanceDelayMs: parseInt(e.target.value) || 0,
+                            })
+                          }
+                          className="bg-[#0f1629] border-[#2a3441] text-white focus:ring-[#fe6804]"
+                        />
+                        <p className="text-[11px] text-white/50 mt-1">
+                          Milliseconds before automatically opening the next player modal (1000ms = 1 sec).
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Save Button Bar */}
                   <div className="flex justify-end gap-3 pt-2">
                     <button
@@ -762,9 +1113,10 @@ export function AdminTeams() {
                     </button>
                     <Button
                       type="submit"
+                      disabled={isSubmitting}
                       className="px-6 bg-[linear-gradient(180deg,rgba(255,107,0,1)_0%,rgba(239,65,35,1)_100%)] text-white hover:opacity-90 font-bold shadow-lg"
                     >
-                      Save Rules & Limits
+                      {isSubmitting ? "Saving..." : "Save Rules & Limits"}
                     </Button>
                   </div>
                 </form>
@@ -790,7 +1142,7 @@ export function AdminTeams() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveTeamModal} className="flex-1 overflow-y-auto pr-1 mt-3 space-y-3.5">
+            <form onSubmit={handleSaveTeam} className="flex-1 overflow-y-auto pr-1 mt-3 space-y-3.5">
               {/* Row 1: Name and Budget side-by-side */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -947,21 +1299,39 @@ export function AdminTeams() {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex justify-end gap-2.5 pt-3 border-t border-[#1a2332] shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setShowTeamModal(false)}
-                  className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs border border-white/15 hover:border-white/30 transition-all active:scale-95"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-5 py-2 rounded-xl bg-[linear-gradient(180deg,rgba(255,107,0,1)_0%,rgba(239,65,35,1)_100%)] text-white font-bold text-xs shadow-md hover:opacity-95 active:scale-95 transition-all disabled:opacity-50"
-                >
-                  {isSubmitting ? "Saving..." : editingTeam ? "Update Team" : "Add Team"}
-                </button>
+              <div className="flex items-center justify-between gap-2.5 pt-3 border-t border-[#1a2332] shrink-0">
+                {editingTeam ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const teamToDelete = editingTeam;
+                      setShowTeamModal(false);
+                      handleDeleteTeam(teamToDelete);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-400 font-semibold text-xs border border-red-500/30 hover:border-red-500/50 transition-all active:scale-95 flex items-center gap-1.5"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                    <span>Delete Franchise</span>
+                  </button>
+                ) : (
+                  <div />
+                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowTeamModal(false)}
+                    className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs border border-white/15 hover:border-white/30 transition-all active:scale-95"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="px-5 py-2 rounded-xl bg-[linear-gradient(180deg,rgba(255,107,0,1)_0%,rgba(239,65,35,1)_100%)] text-white font-bold text-xs shadow-md hover:opacity-95 active:scale-95 transition-all disabled:opacity-50"
+                  >
+                    {isSubmitting ? "Saving..." : editingTeam ? "Update Team" : "Add Team"}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

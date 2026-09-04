@@ -389,6 +389,45 @@ class SupabaseService {
     });
   }
 
+  async returnPlayerToAvailable(playerNameOrId: string | number): Promise<void> {
+    const isId = typeof playerNameOrId === "number";
+
+    // 1. Update player status in players table to 'pending'
+    const query = supabase
+      .from("players")
+      .update({
+        status: "pending",
+        sold_price: 0,
+        sold_to_team: null,
+        sold_at: null,
+      });
+
+    const { error } = isId
+      ? await query.eq("id", playerNameOrId)
+      : await query.eq("name", playerNameOrId);
+
+    if (error) {
+      // Fallback if schema expects 'available'
+      const fallback = supabase
+        .from("players")
+        .update({
+          status: "available",
+          sold_price: 0,
+          sold_to_team: null,
+          sold_at: null,
+        });
+      if (isId) await fallback.eq("id", playerNameOrId);
+      else await fallback.eq("name", playerNameOrId);
+    }
+
+    // 2. Remove all unsold and sold log entries for this player so logs and players remain in exact sync
+    if (isId) {
+      await supabase.from("auction_log").delete().eq("player_id", playerNameOrId);
+    } else {
+      await supabase.from("auction_log").delete().eq("player_name", playerNameOrId);
+    }
+  }
+
   async undoLastAction(): Promise<{ playerName: string; action: string } | null> {
     // Get the most recent auction log entry
     const { data: lastLog } = await supabase
@@ -405,25 +444,30 @@ class SupabaseService {
       await supabase
         .from("players")
         .update({
-          status: "unsold",
+          status: "pending",
           sold_price: 0,
           sold_to_team: null,
           sold_at: null,
         })
         .eq("name", lastLog.player_name);
-    } else if (lastLog.action === "unsold") {
-      // Cannot meaningfully undo an unsold -- just log it
-    }
 
-    // Log the undo
-    await supabase.from("auction_log").insert({
-      player_id: lastLog.player_id,
-      player_name: lastLog.player_name,
-      team_name: lastLog.team_name,
-      action: "undo",
-      final_price: 0,
-      performed_by: (await supabase.auth.getUser()).data.user?.email || "unknown",
-    });
+      // Remove the sold log
+      await supabase.from("auction_log").delete().eq("id", lastLog.id);
+    } else if (lastLog.action === "unsold") {
+      // Return unsold player back to available (pending) status
+      await supabase
+        .from("players")
+        .update({
+          status: "pending",
+          sold_price: 0,
+          sold_to_team: null,
+          sold_at: null,
+        })
+        .eq("name", lastLog.player_name);
+
+      // Remove the unsold log entry so auction log and player status are in sync
+      await supabase.from("auction_log").delete().eq("id", lastLog.id);
+    }
 
     return {
       playerName: lastLog.player_name,
@@ -447,6 +491,15 @@ class SupabaseService {
       .update(data)
       .eq("id", id);
     if (error) throw new Error(`Failed to update player: ${error.message}`);
+
+    // If status is changed to pending or available, remove any unsold logs for this player
+    if (data.status === "pending" || data.status === "available") {
+      await supabase
+        .from("auction_log")
+        .delete()
+        .eq("player_id", id)
+        .eq("action", "unsold");
+    }
   }
 
   async deletePlayer(id: number): Promise<void> {
@@ -522,13 +575,13 @@ class SupabaseService {
 
     const teamName = teamRow?.name || slug;
 
-    // Reset any players that were assigned or sold to this team back to available
+    // Reset any players that were assigned or sold to this team back to pending
     await supabase
       .from("players")
       .update({
         sold_to_team: null,
         sold_price: 0,
-        status: "available",
+        status: "pending",
         sold_at: null,
       })
       .or(`sold_to_team.eq.${slug},sold_to_team.eq.${teamName}`);
@@ -862,7 +915,7 @@ class SupabaseService {
             .update({
               pool_id: pool.id,
               auction_order: idx + 1,
-              status: "available",
+              status: "pending",
               sold_price: 0,
               sold_to_team: null,
               sold_at: null,
@@ -979,14 +1032,24 @@ class SupabaseService {
     const { error } = await supabase
       .from("players")
       .update({
-        status: "unsold",
+        status: "pending",
         sold_price: 0,
         sold_to_team: null,
         sold_at: null,
       })
       .neq("id", 0); // Update all rows
 
-    if (error) throw new Error(`Failed to reset auction: ${error.message}`);
+    if (error) {
+      await supabase
+        .from("players")
+        .update({
+          status: "available",
+          sold_price: 0,
+          sold_to_team: null,
+          sold_at: null,
+        })
+        .neq("id", 0);
+    }
 
     await supabase.from("auction_log").delete().neq("id", 0);
   }
@@ -1006,10 +1069,11 @@ class SupabaseService {
 
   async clearAllUnsold(): Promise<number> {
     try {
-      const { data } = await supabase
+      // 1. Update players with status 'pending' (matching DB check constraint)
+      const { data, error } = await supabase
         .from("players")
         .update({
-          status: "available",
+          status: "pending",
           sold_price: 0,
           sold_to_team: null,
           sold_at: null,
@@ -1017,9 +1081,29 @@ class SupabaseService {
         .or("status.eq.unsold,status.eq.Unsold")
         .select("id");
 
+      let updatedCount = data ? data.length : 0;
+
+      if (error) {
+        // Fallback in case schema allows 'available'
+        const fallback = await supabase
+          .from("players")
+          .update({
+            status: "available",
+            sold_price: 0,
+            sold_to_team: null,
+            sold_at: null,
+          })
+          .or("status.eq.unsold,status.eq.Unsold")
+          .select("id");
+        if (fallback.data) {
+          updatedCount = fallback.data.length;
+        }
+      }
+
       await supabase.from("auction_log").delete().eq("action", "unsold");
-      return data ? data.length : 0;
-    } catch {
+      return updatedCount;
+    } catch (e) {
+      console.error("clearAllUnsold error:", e);
       return 0;
     }
   }
@@ -1075,7 +1159,7 @@ class SupabaseService {
         base_price: p.base_price && !isNaN(Number(p.base_price)) ? Number(p.base_price) : 400000,
         role: validRole,
         image_url: p.image_url?.trim() || null,
-        status: "unsold",
+        status: "pending",
         sold_price: 0,
       });
 

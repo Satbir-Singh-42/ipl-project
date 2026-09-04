@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS players (
   base_price NUMERIC DEFAULT 400000,
   role TEXT NOT NULL CHECK (role IN ('Batsman', 'Bowler', 'All Rounder', 'Wicket Keeper')),
   image_url TEXT,
-  status TEXT DEFAULT 'unsold' CHECK (status IN ('pending', 'sold', 'unsold')),
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'sold', 'unsold')),
   sold_price NUMERIC DEFAULT 0,
   sold_to_team TEXT,
   sold_at TIMESTAMPTZ,
@@ -110,6 +110,57 @@ CREATE TABLE IF NOT EXISTS playing_xi (
 CREATE INDEX idx_playing_xi_team ON playing_xi(team_slug);
 
 
+-- 6. AUCTION SETTINGS & SQUAD RULES TABLE
+CREATE TABLE IF NOT EXISTS auction_settings (
+  id BIGINT PRIMARY KEY DEFAULT 1,
+  max_players INTEGER NOT NULL DEFAULT 15,
+  min_players INTEGER NOT NULL DEFAULT 11,
+  max_overseas INTEGER NOT NULL DEFAULT 7,
+  min_indians INTEGER NOT NULL DEFAULT 8,
+  playing_xi_total INTEGER NOT NULL DEFAULT 11,
+  playing_xi_max_overseas INTEGER NOT NULL DEFAULT 4,
+  batsmen_min INTEGER NOT NULL DEFAULT 2,
+  batsmen_max INTEGER NOT NULL DEFAULT 5,
+  wk_min INTEGER NOT NULL DEFAULT 1,
+  wk_max INTEGER NOT NULL DEFAULT 3,
+  all_rounders_min INTEGER NOT NULL DEFAULT 1,
+  bowlers_min INTEGER NOT NULL DEFAULT 2,
+  starting_budget NUMERIC NOT NULL DEFAULT 10000000,
+  default_base_price NUMERIC NOT NULL DEFAULT 400000,
+  bid_increment NUMERIC NOT NULL DEFAULT 100000,
+  teams_qualifying INTEGER NOT NULL DEFAULT 8,
+  auto_advance_delay_ms INTEGER NOT NULL DEFAULT 1000,
+  enable_captain_multiplier BOOLEAN NOT NULL DEFAULT true,
+  captain_multiplier NUMERIC NOT NULL DEFAULT 2.0,
+  vice_captain_multiplier NUMERIC NOT NULL DEFAULT 1.5,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Ensure columns exist if table was already created
+ALTER TABLE auction_settings ADD COLUMN IF NOT EXISTS enable_captain_multiplier BOOLEAN DEFAULT true;
+ALTER TABLE auction_settings ADD COLUMN IF NOT EXISTS captain_multiplier NUMERIC DEFAULT 2.0;
+ALTER TABLE auction_settings ADD COLUMN IF NOT EXISTS vice_captain_multiplier NUMERIC DEFAULT 1.5;
+
+-- Enable Row Level Security immediately
+ALTER TABLE auction_settings ENABLE ROW LEVEL SECURITY;
+
+-- Insert default row if not present
+INSERT INTO auction_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- Policies for auction_settings
+DROP POLICY IF EXISTS "Auction settings are viewable by everyone" ON auction_settings;
+CREATE POLICY "Auction settings are viewable by everyone"
+  ON auction_settings FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "Auction settings can be updated" ON auction_settings;
+CREATE POLICY "Auction settings can be updated"
+  ON auction_settings FOR ALL
+  USING (true)
+  WITH CHECK (true);
+
+
 -- AUTO-UPDATE TIMESTAMPS
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
@@ -127,8 +178,13 @@ CREATE TRIGGER teams_updated_at
   BEFORE UPDATE ON teams
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+DROP TRIGGER IF EXISTS auction_settings_updated_at ON auction_settings;
+CREATE TRIGGER auction_settings_updated_at
+  BEFORE UPDATE ON auction_settings
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
--- ROW LEVEL SECURITY
+
+-- ROW LEVEL SECURITY (Other tables)
 ALTER TABLE players ENABLE ROW LEVEL SECURITY;
 ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE auction_log ENABLE ROW LEVEL SECURITY;
@@ -155,11 +211,15 @@ CREATE POLICY "Authenticated users can update teams"
 CREATE POLICY "Authenticated users can delete teams"
   ON teams FOR DELETE TO authenticated USING (true);
 
--- Auction log: public read, authenticated insert
+-- Auction log: public read, authenticated insert, update, delete
 CREATE POLICY "Auction log is viewable by everyone"
   ON auction_log FOR SELECT USING (true);
 CREATE POLICY "Authenticated users can insert auction log"
   ON auction_log FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Authenticated users can update auction log"
+  ON auction_log FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated users can delete auction log"
+  ON auction_log FOR DELETE TO authenticated USING (true);
 
 -- Users meta: users can only read their own row
 CREATE POLICY "Users can read their own meta"

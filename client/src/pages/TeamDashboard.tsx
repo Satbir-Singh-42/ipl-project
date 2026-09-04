@@ -24,8 +24,8 @@ import {
   Shield,
   Sparkles,
 } from "lucide-react";
-import { AUCTION_CONFIG, getConfigText } from "@shared/config";
 import { formatIndianNumber } from "@/lib/utils";
+import { useAuctionRules } from "@/hooks/useAuctionRules";
 
 // Team Logo component with hover animation
 const TeamLogo = ({
@@ -103,6 +103,7 @@ export const TeamDashboard = () => {
   const [teamRank, setTeamRank] = useState<number | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [teamNotFound, setTeamNotFound] = useState(false);
+  const { rules } = useAuctionRules();
   const { teamStats, isLoading, error, getSoldPlayersByTeam, refreshAllData } =
     useIPLData();
   const { data: soldPlayers, isLoading: loadingPlayers } = getSoldPlayersByTeam(
@@ -164,10 +165,10 @@ export const TeamDashboard = () => {
   const fundsRemaining = teamStat ? teamStat.fundsRemaining : startingBudget;
   const totalSpent = teamStat ? teamStat.totalSpent : 0;
 
-  // Player limits from config
-  const MAX_PLAYERS = AUCTION_CONFIG.maxPlayers;
-  const MAX_OVERSEAS = AUCTION_CONFIG.maxOverseasPlayers;
-  const MIN_PLAYERS = AUCTION_CONFIG.minPlayers;
+  // Player limits from dynamic rules
+  const MAX_PLAYERS = rules.maxPlayers || 15;
+  const MAX_OVERSEAS = rules.maxOverseas || 7;
+  const MIN_PLAYERS = rules.minPlayers || 11;
 
   // Calculate current counts
   const currentPlayers = teamStat?.playersCount || 0;

@@ -12,6 +12,7 @@ import {
   ChevronDown,
   Check,
   RefreshCw,
+  RotateCcw,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,7 +20,7 @@ import { supabaseService } from "@/services/supabaseService";
 import type { Player } from "@/services/supabaseService";
 import { formatIndianNumber } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { AUCTION_CONFIG } from "@shared/config";
+import { useAuctionRules } from "@/hooks/useAuctionRules";
 import { AdminHeader } from "@/components/AdminHeader";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CustomDropdown } from "@/components/CustomDropdown";
@@ -119,13 +120,15 @@ export function AdminPlayers() {
     onConfirm: () => {},
   });
 
+  const { rules } = useAuctionRules();
+
   // Form state
   const [formData, setFormData] = useState({
     name: "",
     age: "",
     country: "India",
     role: "Batsman",
-    base_price: AUCTION_CONFIG.defaultBasePrice.toString(),
+    base_price: (rules.defaultBasePrice || 400000).toString(),
     eval_points: "",
     t20_matches: "",
     runs: "",
@@ -166,6 +169,9 @@ export function AdminPlayers() {
             description: `${count} players are now marked available in the auction pool.`,
           });
           await loadPlayers();
+          queryClient.invalidateQueries({ queryKey: ["players"] });
+          queryClient.invalidateQueries({ queryKey: ["unsoldPlayers"] });
+          queryClient.invalidateQueries({ queryKey: ["teamStats"] });
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : "Failed to clear unsold status";
           toast({ title: message, variant: "destructive" });
@@ -186,7 +192,7 @@ export function AdminPlayers() {
       age: "",
       country: "India",
       role: "Batsman",
-      base_price: AUCTION_CONFIG.defaultBasePrice.toString(),
+      base_price: (rules.defaultBasePrice || 400000).toString(),
       eval_points: "",
       t20_matches: "",
       runs: "",
@@ -217,7 +223,7 @@ export function AdminPlayers() {
         age: formData.age ? parseInt(formData.age) : null,
         country: formData.country.trim() || "India",
         role: formData.role,
-        base_price: parseFloat(formData.base_price) || AUCTION_CONFIG.defaultBasePrice,
+        base_price: parseFloat(formData.base_price) || rules.defaultBasePrice || 400000,
         eval_points: parseInt(formData.eval_points) || 0,
         t20_matches: parseInt(formData.t20_matches) || 0,
         runs: formData.runs ? parseInt(formData.runs) : null,
@@ -233,7 +239,7 @@ export function AdminPlayers() {
       } else {
         await supabaseService.addPlayer({
           ...playerPayload,
-          status: "available",
+          status: "pending",
         });
         toast({ title: `Added ${formData.name}` });
       }
@@ -266,6 +272,33 @@ export function AdminPlayers() {
           queryClient.invalidateQueries({ queryKey: ["unsoldPlayers"] });
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : "Failed to delete player";
+          toast({ title: message, variant: "destructive" });
+        }
+      },
+    });
+  };
+
+  const handleReturnToAvailable = (player: Player) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: "Return to Available Pool",
+      description: `Return ${player.name} to available status? This removes any unsold/sold log history and returns the player to the active auction pool.`,
+      confirmText: "Make Available",
+      variant: "warning",
+      onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+        try {
+          await supabaseService.returnPlayerToAvailable(player.dbId || player.name);
+          toast({
+            title: "Player Returned to Available",
+            description: `${player.name} is now available in the auction pool and logs are synchronized.`,
+          });
+          await loadPlayers();
+          queryClient.invalidateQueries({ queryKey: ["players"] });
+          queryClient.invalidateQueries({ queryKey: ["unsoldPlayers"] });
+          queryClient.invalidateQueries({ queryKey: ["teamStats"] });
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : "Failed to return player to available";
           toast({ title: message, variant: "destructive" });
         }
       },
@@ -421,7 +454,7 @@ export function AdminPlayers() {
             base_price:
               !isNaN(cleanPrice) && cleanPrice > 0
                 ? cleanPrice
-                : AUCTION_CONFIG.defaultBasePrice,
+                : rules.defaultBasePrice || 400000,
             eval_points: parseInt(cols[pointsIdx]) || 0,
             image_url: cols[imageIdx] || undefined,
             t20_matches: parseInt(cols[matchesIdx]) || 0,
@@ -782,7 +815,7 @@ export function AdminPlayers() {
                         <div>
                           <div className="text-[10px] font-semibold text-white/50 uppercase">Base Price</div>
                           <div className="text-xs font-bold text-green-400 truncate">
-                            ₹{formatIndianNumber(parseFloat(formData.base_price) || AUCTION_CONFIG.defaultBasePrice)}
+                            ₹{formatIndianNumber(parseFloat(formData.base_price) || rules.defaultBasePrice || 400000)}
                           </div>
                         </div>
                         <div>
@@ -1014,6 +1047,15 @@ export function AdminPlayers() {
                             </td>
                             <td className="px-2 py-2.5 sm:px-3 sm:py-3 text-center whitespace-nowrap">
                               <div className="flex items-center justify-center gap-1">
+                                {(player.status === "unsold" || player.status === "sold") && (
+                                  <button
+                                    onClick={() => handleReturnToAvailable(player)}
+                                    className="p-1.5 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors"
+                                    title="Return to Available (Clears Unsold/Sold status & logs)"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => handleEdit(player)}
                                   className="p-1.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"

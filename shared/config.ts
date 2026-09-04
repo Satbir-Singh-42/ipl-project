@@ -216,6 +216,16 @@ export const PLAYING_XI_CONFIG = {
   foreignPlayers: {
     max: 4,
   },
+
+  /**
+   * Captain and Vice-Captain Multipliers Configuration
+   * Default: Enabled, Captain 2.0x, Vice-Captain 1.5x
+   */
+  multipliers: {
+    enabled: true,
+    captainMultiplier: 2.0,
+    viceCaptainMultiplier: 1.5,
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

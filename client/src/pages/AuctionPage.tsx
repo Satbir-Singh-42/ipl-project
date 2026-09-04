@@ -17,8 +17,8 @@ import {
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { AUCTION_CONFIG } from "@shared/config";
 import { useToast } from "@/hooks/use-toast";
+import { useAuctionRules } from "@/hooks/useAuctionRules";
 import { LoadingPage } from "@/components/LoadingPage";
 import { AdminHeader } from "@/components/AdminHeader";
 import { cn, formatIndianNumber } from "@/lib/utils";
@@ -80,6 +80,7 @@ export default function AuctionPage() {
     new Set(),
   );
   const [unsoldCount, setUnsoldCount] = useState(0);
+  const { rules } = useAuctionRules();
   const [searchTerm, setSearchTerm] = useState("");
   const [viewerOpen, setViewerOpen] = useState(false);
   const [currentPlayer, setCurrentPlayer] = useState<Player | null>(null);
@@ -335,8 +336,8 @@ export default function AuctionPage() {
         setTimeout(() => {
           setIsTransitioning(false);
         }, 300);
-      }, 1000);
-    }, 1000);
+      }, rules.autoAdvanceDelayMs || 1000);
+    }, rules.autoAdvanceDelayMs || 1000);
   };
 
   const markUnsold = () => {
@@ -394,8 +395,8 @@ export default function AuctionPage() {
         setTimeout(() => {
           setIsTransitioning(false);
         }, 300);
-      }, 1000);
-    }, 1000);
+      }, rules.autoAdvanceDelayMs || 1000);
+    }, rules.autoAdvanceDelayMs || 1000);
   };
 
   const restorePlayer = (player: Player, e: React.MouseEvent) => {
@@ -408,12 +409,12 @@ export default function AuctionPage() {
     const newSold = soldCards.filter((p) => p.name !== player.name);
     const newActive = [...activeCards];
 
-    // Mark player as unsold when restoring
+    // Remove player from unsold set and return to available pool
     const newUnsoldNames = new Set(unsoldPlayerNames);
-    newUnsoldNames.add(player.name);
+    newUnsoldNames.delete(player.name);
     setUnsoldPlayerNames(newUnsoldNames);
 
-    const restoredPlayer = { ...player, isUnsold: true, soldPrice: 0 };
+    const restoredPlayer = { ...player, isUnsold: false, soldPrice: 0, status: "available" as const };
 
     const originalIndex = player.originalIndex ?? activeCards.length;
     const insertIndex = newActive.findIndex(
@@ -428,7 +429,11 @@ export default function AuctionPage() {
 
     setSoldCards(newSold);
     setActiveCards(newActive);
-    setUnsoldCount((prev) => prev + 1);
+
+    // Synchronize Supabase database and delete any unsold/sold log entries
+    supabaseService.returnPlayerToAvailable(player.name).catch((err) => {
+      console.error("Failed to return player to available in database:", err);
+    });
   };
 
   const quickUndo = () => {
@@ -448,6 +453,14 @@ export default function AuctionPage() {
         newUnsoldNames.add(lastAction.player.name);
         setUnsoldPlayerNames(newUnsoldNames);
         setUnsoldCount((prev) => prev + 1);
+        supabaseService.markPlayerUnsold(lastAction.player.name).catch((err) => {
+          console.error("Failed to mark player unsold in database:", err);
+        });
+      } else {
+        // Return player to available and delete the sold log
+        supabaseService.returnPlayerToAvailable(lastAction.player.name).catch((err) => {
+          console.error("Failed to return player to available in database:", err);
+        });
       }
       setCurrentPlayer(lastAction.player);
       setCurrentBid(0);
@@ -459,13 +472,18 @@ export default function AuctionPage() {
       setUnsoldPlayerNames(newUnsoldNames);
 
       const newActive = activeCards.map((p) =>
-        p.name === lastAction.player.name ? { ...p, isUnsold: false } : p,
+        p.name === lastAction.player.name ? { ...p, isUnsold: false, status: "available" as const } : p,
       );
       setActiveCards(newActive);
       setUnsoldCount(lastAction.previousUnsoldCount);
       setCurrentPlayer(lastAction.player);
       setCurrentBid(0);
       setViewerOpen(true);
+
+      // Return player to available and remove the unsold log from database
+      supabaseService.returnPlayerToAvailable(lastAction.player.name).catch((err) => {
+        console.error("Failed to remove unsold log in database:", err);
+      });
     }
     setLastAction(null);
   };
@@ -687,7 +705,7 @@ export default function AuctionPage() {
           setCurrentBid((prev) =>
             prev === 0
               ? Number(currentPlayer.basePrice) || 0
-              : prev + AUCTION_CONFIG.bidIncrement,
+              : prev + (rules.bidIncrement || 100000),
           );
         }
       } else if (viewerOpen && key === "escape") {
@@ -1232,7 +1250,7 @@ export default function AuctionPage() {
                                       setCurrentBid((prev) =>
                                         prev === 0
                                           ? Number(currentPlayer.basePrice) || 0
-                                          : prev + AUCTION_CONFIG.bidIncrement,
+                                          : prev + (rules.bidIncrement || 100000),
                                       )
                                   : undefined
                               }
@@ -1252,7 +1270,7 @@ export default function AuctionPage() {
                                 <span>Current Bid</span>
                                 {isMobile && (
                                   <span className="text-[10px] md:text-xs bg-blue-500/30 px-2 py-0.5 rounded font-bold">
-                                    TAP TO INCREMENT
+                                    +₹{formatIndianNumber(rules.bidIncrement || 100000)} TAP
                                   </span>
                                 )}
                               </div>
@@ -1336,6 +1354,7 @@ export default function AuctionPage() {
                                 whileHover={{
                                   scale: 1.03,
                                   backgroundColor: "rgba(75, 85, 99, 1)",
+                                  boxShadow: "0 0 20px rgba(100, 116, 139, 0.5)",
                                 }}
                                 whileTap={{ scale: 0.95 }}
                                 transition={{ duration: 0.2 }}>
@@ -1362,8 +1381,8 @@ export default function AuctionPage() {
                                 const isSelected = selectedTeam === team.teamName;
                                 const currentPrice = currentBid > 0 ? currentBid : (currentPlayer.basePrice || 0);
                                 const cannotAfford = team.fundsRemaining < currentPrice;
-                                const isSquadFull = team.playersCount >= AUCTION_CONFIG.maxPlayers;
-                                const isOverseasFull = currentPlayer.overseas && (team.overseasCount >= AUCTION_CONFIG.maxOverseasPlayers);
+                                const isSquadFull = team.playersCount >= (rules.maxPlayers || 15);
+                                const isOverseasFull = currentPlayer.overseas && (team.overseasCount >= (rules.maxOverseas || 7));
                                 const isDisabled = cannotAfford || isSquadFull || isOverseasFull;
 
                                 const teamLogo = team.logoUrl || getTeamLogo(team.teamName);
@@ -1371,8 +1390,8 @@ export default function AuctionPage() {
 
                                 let disabledReason = "";
                                 if (cannotAfford) disabledReason = "Insufficient Funds";
-                                else if (isSquadFull) disabledReason = "Squad Full (15/15)";
-                                else if (isOverseasFull) disabledReason = "Overseas Full (7/7)";
+                                else if (isSquadFull) disabledReason = `Squad Full (${team.playersCount}/${rules.maxPlayers || 15})`;
+                                else if (isOverseasFull) disabledReason = `Overseas Full (${team.overseasCount}/${rules.maxOverseas || 7})`;
 
                                 return (
                                   <button

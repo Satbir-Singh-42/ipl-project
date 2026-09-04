@@ -27,8 +27,15 @@ import {
   Download,
   Info,
   Globe,
+  Crown,
+  Medal,
+  RotateCcw,
+  LayoutGrid,
+  List,
 } from "lucide-react";
-import { DASHBOARD_COLORS, PLAYING_XI_CONFIG } from "@shared/config";
+import { DASHBOARD_COLORS } from "@shared/config";
+import { useAuctionRules } from "@/hooks/useAuctionRules";
+import { CricketFieldFormation } from "@/components/CricketFieldFormation";
 
 // Enhanced Team Logo with animations
 const TeamLogo = ({
@@ -156,14 +163,55 @@ export const PlayingXI = () => {
   const { data: soldPlayers, isLoading: loadingPlayers } = getSoldPlayersByTeam(
     teamConfig?.id || "",
   );
+  const { rules } = useAuctionRules();
 
-  // Playing XI state
-  const [playingXI, setPlayingXI] = useState<string[]>([]);
+  // Playing XI state with instant localStorage hydration
+  const [playingXI, setPlayingXI] = useState<string[]>(() => {
+    if (!teamId) return [];
+    try {
+      const cached = localStorage.getItem(`playingXI_${teamId}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+
+  // View mode state
+  const [viewMode, setViewMode] = useState<"field" | "list">(() => {
+    if (!teamId) return "field";
+    try {
+      const cached = localStorage.getItem(`viewMode_${teamId}`);
+      if (cached === "field" || cached === "list") return cached;
+    } catch {}
+    return "field";
+  });
+
+  // Captain & Vice-Captain
+  const [captainName, setCaptainName] = useState<string | null>(() => {
+    if (!teamId) return null;
+    try {
+      return localStorage.getItem(`captain_${teamId}`) || null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [viceCaptainName, setViceCaptainName] = useState<string | null>(() => {
+    if (!teamId) return null;
+    try {
+      return localStorage.getItem(`vc_${teamId}`) || null;
+    } catch {
+      return null;
+    }
+  });
 
   // Filter and sort states
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("none");
 
+  // Load Team configs and sync Playing XI, Captain, and VC on mount
   useEffect(() => {
     if (teamId) {
       supabaseService.getTeamConfigs().then((configs) => {
@@ -176,25 +224,61 @@ export const PlayingXI = () => {
         }
       });
 
-      // Load Playing XI from database
-      supabaseService.getPlayingXI(teamId).then((savedXI) => {
-        if (savedXI && savedXI.length > 0) {
-          setPlayingXI(savedXI);
+      // If localStorage didn't have Playing XI, load from Supabase database
+      try {
+        const cached = localStorage.getItem(`playingXI_${teamId}`);
+        if (!cached) {
+          supabaseService.getPlayingXI(teamId).then((savedXI) => {
+            if (savedXI && savedXI.length > 0) {
+              setPlayingXI(savedXI);
+              localStorage.setItem(`playingXI_${teamId}`, JSON.stringify(savedXI));
+            }
+          });
         }
-      });
+      } catch {}
     }
   }, [teamId]);
 
-  // Save Playing XI to database whenever it changes
+  // Automatically save Playing XI to localStorage and Supabase database on every change
   useEffect(() => {
-    if (teamId && playingXI.length > 0) {
-      supabaseService.savePlayingXI(teamId, playingXI);
+    if (teamId) {
+      if (playingXI.length > 0 && playingXI.some(Boolean)) {
+        try {
+          localStorage.setItem(`playingXI_${teamId}`, JSON.stringify(playingXI));
+        } catch {}
+        supabaseService.savePlayingXI(teamId, playingXI.filter(Boolean));
+      } else {
+        try {
+          localStorage.removeItem(`playingXI_${teamId}`);
+        } catch {}
+        supabaseService.savePlayingXI(teamId, []);
+      }
     }
   }, [playingXI, teamId]);
 
+  const handleSetCaptain = (playerName: string) => {
+    const nextVal = playerName === captainName ? null : playerName;
+    setCaptainName(nextVal);
+    if (playerName === viceCaptainName) setViceCaptainName(null);
+    if (teamId) {
+      if (!nextVal) localStorage.removeItem(`captain_${teamId}`);
+      else localStorage.setItem(`captain_${teamId}`, nextVal);
+    }
+  };
+
+  const handleSetViceCaptain = (playerName: string) => {
+    const nextVal = playerName === viceCaptainName ? null : playerName;
+    setViceCaptainName(nextVal);
+    if (playerName === captainName) setCaptainName(null);
+    if (teamId) {
+      if (!nextVal) localStorage.removeItem(`vc_${teamId}`);
+      else localStorage.setItem(`vc_${teamId}`, nextVal);
+    }
+  };
+
   // Check if a player can be added to Playing XI
   const canAddPlayer = (playerName: string): boolean => {
-    if (playingXI.length >= PLAYING_XI_CONFIG.totalPlayers) return false;
+    if (playingXI.length >= (rules.playingXITotal || 11)) return false;
     if (playingXI.includes(playerName)) return true; // Already in XI
 
     const player = (soldPlayers || []).find((p) => p.name === playerName);
@@ -208,7 +292,7 @@ export const PlayingXI = () => {
     // Check foreign player limit
     if (player.overseas) {
       const foreignCount = xiPlayers.filter((p) => p.overseas).length;
-      if (foreignCount >= PLAYING_XI_CONFIG.foreignPlayers.max) return false;
+      if (foreignCount >= (rules.playingXIOverseasLimit || 4)) return false;
     }
 
     // Check role limits
@@ -216,14 +300,14 @@ export const PlayingXI = () => {
       const batsmenCount = xiPlayers.filter(
         (p) => getRoleCategory(p.role) === "batsmen",
       ).length;
-      if (batsmenCount >= PLAYING_XI_CONFIG.batsmen.max) return false;
+      if (batsmenCount >= (rules.batsmenMax || 5)) return false;
     }
 
     if (roleCategory === "wicketKeepers") {
       const wkCount = xiPlayers.filter(
         (p) => getRoleCategory(p.role) === "wicketKeepers",
       ).length;
-      if (wkCount >= PLAYING_XI_CONFIG.wicketKeepers.max) return false;
+      if (wkCount >= (rules.wkMax || 3)) return false;
     }
 
     return true;
@@ -244,16 +328,58 @@ export const PlayingXI = () => {
 
   const moveToXI = (playerName: string) => {
     if (!playingXI.includes(playerName) && canAddPlayer(playerName)) {
-      setPlayingXI((prev) => [...prev, playerName]);
+      setPlayingXI((prev) => {
+        const next = [...prev];
+        const emptyIdx = next.findIndex((p) => !p);
+        if (emptyIdx !== -1 && emptyIdx < (rules.playingXITotal || 11)) {
+          next[emptyIdx] = playerName;
+          return next;
+        }
+        return [...next, playerName];
+      });
     }
   };
 
+  const handleSwapSlots = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    setPlayingXI((prev) => {
+      const next = [...prev];
+      const maxIdx = Math.max(fromIndex, toIndex);
+      while (next.length <= maxIdx) {
+        next.push("");
+      }
+      const temp = next[fromIndex] || "";
+      next[fromIndex] = next[toIndex] || "";
+      next[toIndex] = temp;
+      return next;
+    });
+  };
+
+  const handleAddPlayerToSlot = (playerName: string, slotIndex: number) => {
+    setPlayingXI((prev) => {
+      const next = [...prev];
+      while (next.length <= slotIndex) {
+        next.push("");
+      }
+      const existingIdx = next.indexOf(playerName);
+      if (existingIdx !== -1) {
+        next[existingIdx] = "";
+      }
+      next[slotIndex] = playerName;
+      return next;
+    });
+  };
+
   const removeFromXI = (playerName: string) => {
-    setPlayingXI((prev) => prev.filter((p) => p !== playerName));
+    setPlayingXI((prev) => prev.map((p) => (p === playerName ? "" : p)));
+    if (playerName === captainName) setCaptainName(null);
+    if (playerName === viceCaptainName) setViceCaptainName(null);
   };
 
   const clearAllFromXI = () => {
     setPlayingXI([]);
+    setCaptainName(null);
+    setViceCaptainName(null);
   };
 
   const downloadPlayingXICSV = async () => {
@@ -340,40 +466,42 @@ export const PlayingXI = () => {
   // Validate composition
   const validateComposition = () => {
     const comp = getComposition();
+    const totalXI = rules.playingXITotal || 11;
+    const maxForeign = rules.playingXIOverseasLimit || 4;
+    const minBat = rules.batsmenMin || 2;
+    const maxBat = rules.batsmenMax || 5;
+    const minWk = rules.wkMin || 1;
+    const maxWk = rules.wkMax || 3;
+    const minAr = rules.allRoundersMin || 1;
+    const minBowl = rules.bowlersMin || 2;
 
     const requirements = [
       {
-        met: playingXI.length === PLAYING_XI_CONFIG.totalPlayers,
+        met: playingXI.length === totalXI,
         text:
-          playingXI.length < PLAYING_XI_CONFIG.totalPlayers
-            ? `Need ${
-                PLAYING_XI_CONFIG.totalPlayers - playingXI.length
-              } more player(s) to complete Playing XI`
-            : `Playing XI complete (${PLAYING_XI_CONFIG.totalPlayers}/${PLAYING_XI_CONFIG.totalPlayers})`,
+          playingXI.length < totalXI
+            ? `Need ${totalXI - playingXI.length} more player(s) to complete Playing XI`
+            : `Playing XI complete (${totalXI}/${totalXI})`,
       },
       {
-        met:
-          comp.batsmen >= PLAYING_XI_CONFIG.batsmen.min &&
-          comp.batsmen <= PLAYING_XI_CONFIG.batsmen.max,
-        text: `Batsmen must be ${PLAYING_XI_CONFIG.batsmen.min}-${PLAYING_XI_CONFIG.batsmen.max} (current: ${comp.batsmen})`,
+        met: comp.batsmen >= minBat && comp.batsmen <= maxBat,
+        text: `Batsmen must be ${minBat}-${maxBat} (current: ${comp.batsmen})`,
       },
       {
-        met:
-          comp.wicketKeepers >= PLAYING_XI_CONFIG.wicketKeepers.min &&
-          comp.wicketKeepers <= PLAYING_XI_CONFIG.wicketKeepers.max,
-        text: `Wicket-Keepers must be ${PLAYING_XI_CONFIG.wicketKeepers.min}-${PLAYING_XI_CONFIG.wicketKeepers.max} (current: ${comp.wicketKeepers})`,
+        met: comp.wicketKeepers >= minWk && comp.wicketKeepers <= maxWk,
+        text: `Wicket-Keepers must be ${minWk}-${maxWk} (current: ${comp.wicketKeepers})`,
       },
       {
-        met: comp.allRounders >= PLAYING_XI_CONFIG.allRounders.min,
-        text: `Must have at least ${PLAYING_XI_CONFIG.allRounders.min} All-Rounder (current: ${comp.allRounders})`,
+        met: comp.allRounders >= minAr,
+        text: `Must have at least ${minAr} All-Rounder (current: ${comp.allRounders})`,
       },
       {
-        met: comp.bowlers >= PLAYING_XI_CONFIG.bowlers.min,
-        text: `Must have at least ${PLAYING_XI_CONFIG.bowlers.min} Bowlers (current: ${comp.bowlers})`,
+        met: comp.bowlers >= minBowl,
+        text: `Must have at least ${minBowl} Bowlers (current: ${comp.bowlers})`,
       },
       {
-        met: comp.foreignPlayers <= PLAYING_XI_CONFIG.foreignPlayers.max,
-        text: `Foreign players cannot exceed ${PLAYING_XI_CONFIG.foreignPlayers.max} (current: ${comp.foreignPlayers})`,
+        met: comp.foreignPlayers <= maxForeign,
+        text: `Foreign players cannot exceed ${maxForeign} (current: ${comp.foreignPlayers})`,
       },
     ];
 
@@ -424,15 +552,28 @@ export const PlayingXI = () => {
     teamConfig.name,
   );
 
+  // Captain & Vice-Captain multiplier settings from admin rules
+  const isCaptainMultiplierEnabled = rules.enableCaptainMultiplier !== false;
+  const cMultiplier = isCaptainMultiplierEnabled ? (rules.captainMultiplier || 2.0) : 1;
+  const vcMultiplier = isCaptainMultiplierEnabled ? (rules.viceCaptainMultiplier || 1.5) : 1;
+
   // Calculate total points for Playing XI
-  const totalPlayingXIPoints = playingXIPlayers.reduce(
-    (sum, player) => sum + (player.points || 0),
-    0,
-  );
+  const totalPlayingXIPoints = playingXIPlayers.reduce((sum, player) => {
+    let multiplier = 1;
+    if (isCaptainMultiplierEnabled) {
+      if (player.name === captainName) multiplier = cMultiplier;
+      else if (player.name === viceCaptainName) multiplier = vcMultiplier;
+    }
+    return sum + Math.round((player.points || 0) * multiplier);
+  }, 0);
 
   const PlayerCard = ({ player, inXI }: { player: Player; inXI: boolean }) => {
     const canAdd = !inXI && canAddPlayer(player.name);
     const isDisabled = !inXI && !canAdd;
+    const isCaptain = isCaptainMultiplierEnabled && inXI && captainName === player.name;
+    const isViceCaptain = isCaptainMultiplierEnabled && inXI && viceCaptainName === player.name;
+    const multiplier = isCaptain ? cMultiplier : isViceCaptain ? vcMultiplier : 1;
+    const displayPoints = Math.round((player.points || 0) * multiplier);
 
     const getPlayerInitials = (name: string) => {
       const parts = name.split(" ");
@@ -450,7 +591,11 @@ export const PlayingXI = () => {
             : "cursor-pointer hover:border-blue-500 hover:shadow-lg"
         } ${
           inXI
-            ? `${teamBorderColor} bg-gradient-to-r ${teamGradient} bg-opacity-10 hover:shadow-blue-500/20`
+            ? isCaptain
+              ? "border-amber-400 bg-amber-950/20 shadow-amber-500/20 shadow-md"
+              : isViceCaptain
+              ? "border-slate-300 bg-slate-900/40 shadow-slate-400/20 shadow-md"
+              : `${teamBorderColor} bg-gradient-to-r ${teamGradient} bg-opacity-10 hover:shadow-blue-500/20`
             : isDisabled
               ? "border-[#2a3441] bg-[#1a2332]"
               : "border-[#2a3441] bg-[#1a2332] hover:bg-[#1f2937] hover:shadow-blue-500/10"
@@ -463,7 +608,7 @@ export const PlayingXI = () => {
         layout
         transition={{ duration: 0.2 }}>
         {/* Player Image */}
-        <div className="w-8 h-8 md:w-12 md:h-12 lg:w-10 lg:h-10 flex-shrink-0">
+        <div className="w-8 h-8 md:w-12 md:h-12 lg:w-10 lg:h-10 flex-shrink-0 relative">
           {player.images ? (
             <img
               src={player.images}
@@ -483,6 +628,16 @@ export const PlayingXI = () => {
             style={player.images ? { display: "none" } : {}}>
             {getPlayerInitials(player.name)}
           </div>
+          {isCaptainMultiplierEnabled && isCaptain && (
+            <div className="absolute -top-1.5 -left-1.5 bg-amber-400 text-black p-0.5 rounded-full shadow-md font-bold text-[8px] flex items-center justify-center w-4 h-4">
+              C
+            </div>
+          )}
+          {isCaptainMultiplierEnabled && isViceCaptain && (
+            <div className="absolute -top-1.5 -left-1.5 bg-slate-300 text-black p-0.5 rounded-full shadow-md font-bold text-[8px] flex items-center justify-center w-4 h-4">
+              VC
+            </div>
+          )}
         </div>
 
         <div className="flex-1 min-w-0">
@@ -505,7 +660,7 @@ export const PlayingXI = () => {
               </motion.span>
             )}
           </div>
-          <div className="flex flex-wrap gap-1 md:gap-2 lg:gap-4">
+          <div className="flex flex-wrap items-center gap-1 md:gap-2 lg:gap-3">
             <p
               className="text-gray-400 text-[10px] md:text-sm lg:text-xs"
               data-testid={`text-player-role-${player.name
@@ -514,22 +669,56 @@ export const PlayingXI = () => {
               {player.role}
             </p>
             <p
-              className="text-blue-400 text-[10px] md:text-sm lg:text-xs font-semibold"
+              className="text-blue-400 text-[10px] md:text-sm lg:text-xs font-semibold flex items-center gap-1"
               data-testid={`text-player-points-${player.name
                 .replace(/\s+/g, "-")
                 .toLowerCase()}`}>
-              {player.points || 0} pts
+              <span>{displayPoints} pts</span>
+              {isCaptainMultiplierEnabled && multiplier > 1 && (
+                <span className="text-[10px] text-amber-300 font-bold">
+                  ({multiplier}x)
+                </span>
+              )}
             </p>
           </div>
         </div>
-        <motion.div
-          className="hidden md:flex flex-shrink-0"
-          transition={{ duration: 0.2 }}>
+
+        {/* Action Buttons */}
+        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+          {isCaptainMultiplierEnabled && inXI && (
+            <div className="flex items-center gap-1 mr-1">
+              <button
+                type="button"
+                onClick={() => handleSetCaptain(player.name)}
+                className={`px-1.5 py-1 rounded text-[10px] font-bold border flex items-center gap-0.5 transition-all ${
+                  isCaptain
+                    ? "bg-amber-400 text-black border-amber-300 shadow-md shadow-amber-500/30"
+                    : "bg-[#0f1629] border-amber-400/30 text-amber-300/80 hover:bg-amber-400/20 hover:text-amber-200"
+                }`}
+                title={isCaptain ? "Team Captain (Click to unset)" : `Make Captain (${cMultiplier}x Points)`}>
+                <Crown className="w-2.5 h-2.5" />
+                <span>C</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSetViceCaptain(player.name)}
+                className={`px-1.5 py-1 rounded text-[10px] font-bold border flex items-center gap-0.5 transition-all ${
+                  isViceCaptain
+                    ? "bg-slate-300 text-black border-slate-200 shadow-md shadow-slate-400/30"
+                    : "bg-[#0f1629] border-slate-400/30 text-slate-300/80 hover:bg-slate-400/20 hover:text-slate-100"
+                }`}
+                title={isViceCaptain ? "Vice-Captain (Click to unset)" : `Make Vice-Captain (${vcMultiplier}x Points)`}>
+                <Medal className="w-2.5 h-2.5" />
+                <span>VC</span>
+              </button>
+            </div>
+          )}
+
           <Button
             size="sm"
             variant="ghost"
-            onClick={(e) => {
-              e.stopPropagation();
+            onClick={() => {
               if (inXI) {
                 removeFromXI(player.name);
               } else if (!isDisabled) {
@@ -549,7 +738,7 @@ export const PlayingXI = () => {
               <ArrowRight className="w-3 h-3 md:w-4 md:h-4" />
             )}
           </Button>
-        </motion.div>
+        </div>
       </motion.div>
     );
   };
@@ -648,7 +837,7 @@ export const PlayingXI = () => {
                         }`}
                         data-testid="text-validation-status">
                         {validation.isValid
-                          ? "Playing XI is Valid! 🎉"
+                          ? "Playing XI is Valid!"
                           : "Playing XI Requirements"}
                       </h3>
                       <p className="text-gray-400 text-xs md:text-sm">
@@ -714,270 +903,339 @@ export const PlayingXI = () => {
           </Card>
         </motion.div>
 
-        {/* Two Column Layout */}
+        {/* View Mode Switcher and Quick Actions */}
         <motion.div
-          className="grid grid-cols-1 xl:grid-cols-2 gap-4 md:gap-6 w-full"
-          variants={containerVariants}
+          variants={itemVariants}
           initial="hidden"
-          animate="visible">
-          {/* Rest of Squad */}
-          <motion.div variants={slideInVariants}>
-            <Card
-              className={`${DASHBOARD_COLORS.card.background} ${DASHBOARD_COLORS.card.border} transition-all duration-300 hover:shadow-lg`}>
-              <CardHeader className="pb-4">
-                <div className="flex items-center justify-between">
-                  <CardTitle
-                    className="text-white flex items-center gap-2"
-                    data-testid="text-bench-title">
-                    <Users className="w-5 h-5 text-gray-400" />
-                    Rest of Squad ({restPlayers.length})
-                  </CardTitle>
-                </div>
+          animate="visible"
+          className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#131b2e] border border-[#2a3441] p-2.5 rounded-xl">
+          {/* Tabs */}
+          <div className="flex items-center gap-1.5 bg-[#0a0f1d] p-1 rounded-lg border border-[#1f293d] w-full sm:w-auto">
+            <button
+              onClick={() => {
+                setViewMode("field");
+                if (teamId) localStorage.setItem(`viewMode_${teamId}`, "field");
+              }}
+              className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 ${
+                viewMode === "field"
+                  ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md shadow-blue-500/20"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+              }`}>
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>2D Pitch Formation</span>
+            </button>
+            <button
+              onClick={() => {
+                setViewMode("list");
+                if (teamId) localStorage.setItem(`viewMode_${teamId}`, "list");
+              }}
+              className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 ${
+                viewMode === "list"
+                  ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md shadow-blue-500/20"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+              }`}>
+              <List className="w-3.5 h-3.5" />
+              <span>Roster & Bench</span>
+            </button>
+          </div>
 
-                {/* Enhanced Filters */}
-                <div className="mt-4 space-y-3">
-                  {/* Role Filters */}
-                  <div className="flex flex-wrap gap-1">
-                    <span className="text-xs text-gray-400 font-medium w-full mb-2">
-                      Filter by Role:
-                    </span>
-                    {[
-                      { key: "all", label: "All", short: "All" },
-                      { key: "batsmen", label: "Batsmen", short: "Bat" },
-                      { key: "bowlers", label: "Bowlers", short: "Bowl" },
-                      {
-                        key: "allRounders",
-                        label: "All-Rounders",
-                        short: "AR",
-                      },
-                      {
-                        key: "wicketKeepers",
-                        label: "Wicket-Keepers",
-                        short: "WK",
-                      },
-                    ].map(({ key, label, short }) => (
-                      <div key={key}>
-                        <Button
-                          size="sm"
-                          variant={roleFilter === key ? "default" : "outline"}
-                          onClick={() => setRoleFilter(key)}
-                          className={`text-[10px] md:text-xs px-2 md:px-3 py-1 h-auto transition-all duration-200 ${
-                            roleFilter === key
-                              ? "bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/25"
-                              : "bg-[#1a2332] border-[#2a3441] text-gray-300 hover:bg-[#1f2937] hover:border-blue-500/50 hover:text-white"
-                          }`}
-                          data-testid={`filter-role-${key}`}>
-                          <span className="hidden sm:inline">{label}</span>
-                          <span className="sm:hidden">{short}</span>
-                        </Button>
-                      </div>
-                    ))}
+          {/* Quick Actions */}
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            {playingXI.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={clearAllFromXI}
+                className="bg-[#1a2332] border-[#2a3441] text-gray-300 hover:text-red-400 hover:border-red-500/40 text-xs px-2.5 py-1.5 h-auto flex items-center gap-1">
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Reset</span>
+              </Button>
+            )}
+          </div>
+        </motion.div>
+
+        {viewMode === "field" ? (
+          <CricketFieldFormation
+            teamConfig={teamConfig}
+            soldPlayers={soldPlayers || []}
+            playingXI={playingXI}
+            captainName={captainName}
+            viceCaptainName={viceCaptainName}
+            rules={rules}
+            onAddPlayer={moveToXI}
+            onAddPlayerToSlot={handleAddPlayerToSlot}
+            onSwapSlots={handleSwapSlots}
+            onRemovePlayer={removeFromXI}
+            onSetCaptain={handleSetCaptain}
+            onSetViceCaptain={handleSetViceCaptain}
+            onClearXI={clearAllFromXI}
+          />
+        ) : (
+          /* Two Column Layout */
+          <motion.div
+            className="grid grid-cols-1 xl:grid-cols-2 gap-4 md:gap-6 w-full"
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible">
+            {/* Rest of Squad */}
+            <motion.div variants={slideInVariants}>
+              <Card
+                className={`${DASHBOARD_COLORS.card.background} ${DASHBOARD_COLORS.card.border} transition-all duration-300 hover:shadow-lg`}>
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between">
+                    <CardTitle
+                      className="text-white flex items-center gap-2"
+                      data-testid="text-bench-title">
+                      <Users className="w-5 h-5 text-gray-400" />
+                      Rest of Squad ({restPlayers.length})
+                    </CardTitle>
                   </div>
 
-                  {/* Sort Options */}
-                  <div className="flex flex-wrap gap-1">
-                    <span className="text-xs text-gray-400 font-medium w-full mb-2">
-                      Sort by Points:
-                    </span>
-                    {[
-                      { key: "none", label: "Default", icon: ArrowUpDown },
-                      {
-                        key: "highest",
-                        label: "Highest First",
-                        icon: ArrowDown,
-                        short: "High",
-                      },
-                      {
-                        key: "lowest",
-                        label: "Lowest First",
-                        icon: ArrowUp,
-                        short: "Low",
-                      },
-                    ].map(({ key, label, icon: Icon, short }) => (
-                      <div key={key}>
-                        <Button
-                          size="sm"
-                          variant={sortBy === key ? "default" : "outline"}
-                          onClick={() => setSortBy(key)}
-                          className={`text-[10px] md:text-xs px-2 md:px-3 py-1 h-auto transition-all duration-200 ${
-                            sortBy === key
-                              ? "bg-purple-600 hover:bg-purple-700 shadow-lg shadow-purple-500/25"
-                              : "bg-[#1a2332] border-[#2a3441] text-gray-300 hover:bg-[#1f2937] hover:border-purple-500/50 hover:text-white"
-                          }`}
-                          data-testid={`sort-${key}`}>
-                          <Icon className="w-3 h-3 mr-1" />
-                          <span className="hidden sm:inline">{label}</span>
-                          <span className="sm:hidden">
-                            {short || label.split(" ")[0]}
-                          </span>
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <AnimatePresence mode="popLayout">
-                  <div className="max-h-[50vh] overflow-y-auto">
-                    {restPlayers.length === 0 ? (
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.9 }}
-                        className="text-center py-12">
-                        <Users className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-                        <p
-                          className="text-gray-400 text-sm"
-                          data-testid="text-bench-empty">
-                          {roleFilter !== "all"
-                            ? "No players found with selected filter"
-                            : "All players are in Playing XI"}
-                        </p>
-                      </motion.div>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-2 md:gap-3">
-                        {restPlayers.map((player) => (
-                          <PlayerCard
-                            key={player.name}
-                            player={player}
-                            inXI={false}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </AnimatePresence>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          {/* Playing XI */}
-          <motion.div variants={slideInVariants}>
-            <Card
-              className={`${DASHBOARD_COLORS.card.background} ${DASHBOARD_COLORS.card.border} transition-all duration-300 hover:shadow-lg`}>
-              <CardHeader className="pb-4">
-                <div className="flex items-center justify-between">
-                  <CardTitle
-                    className="text-white flex items-center gap-2"
-                    data-testid="text-xi-title">
-                    <Trophy className="w-5 h-5 text-yellow-400" />
-                    Playing XI ({playingXI.length}/11)
-                    <div className="relative group">
-                      <button className="text-gray-400 hover:text-blue-400 focus:text-blue-400 transition-colors">
-                        <Info className="w-4 h-4" />
-                      </button>
-                      <div className="absolute left-0 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] p-3 bg-[#1a2332] border border-[#2a3441] rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200 z-50">
-                        <p className="font-semibold text-sm mb-2 text-white">
-                          Playing XI Requirements:
-                        </p>
-                        <ul className="text-xs space-y-1 list-disc list-inside text-gray-300">
-                          <li>Must have exactly 11 players</li>
-                          <li>Batsmen: 2-5 players</li>
-                          <li>Wicket-Keepers: at least 1</li>
-                          <li>All-Rounders: at least 1</li>
-                          <li>Bowlers: at least 2</li>
-                          <li>Foreign players: max 4</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </CardTitle>
-                  <div className="flex items-center gap-2">
-                    {playingXI.length > 0 && (
-                      <div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={clearAllFromXI}
-                          className="bg-red-600 hover:bg-red-700 border-red-600 text-white text-xs px-3 py-1 h-auto transition-all duration-200 shadow-lg hover:shadow-red-500/25"
-                          data-testid="button-clear-all-xi">
-                          Clear All
-                        </Button>
-                      </div>
-                    )}
-                    <ArrowLeftRight className="w-5 h-5 text-gray-400" />
-                  </div>
-                </div>
-
-                {/* Composition Progress */}
-                {playingXI.length > 0 && (
-                  <motion.div
-                    className="mt-3 p-3 bg-white/5 rounded-lg"
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    transition={{ duration: 0.3 }}>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+                  {/* Enhanced Filters */}
+                  <div className="mt-4 space-y-3">
+                    {/* Role Filters */}
+                    <div className="flex flex-wrap gap-1">
+                      <span className="text-xs text-gray-400 font-medium w-full mb-2">
+                        Filter by Role:
+                      </span>
                       {[
+                        { key: "all", label: "All", short: "All" },
+                        { key: "batsmen", label: "Batsmen", short: "Bat" },
+                        { key: "bowlers", label: "Bowlers", short: "Bowl" },
                         {
-                          key: "batsmen",
-                          label: "Bat",
-                          color: "text-green-400",
+                          key: "allRounders",
+                          label: "All-Rounders",
+                          short: "AR",
                         },
                         {
                           key: "wicketKeepers",
-                          label: "WK",
-                          color: "text-blue-400",
+                          label: "Wicket-Keepers",
+                          short: "WK",
                         },
-                        {
-                          key: "allRounders",
-                          label: "AR",
-                          color: "text-purple-400",
-                        },
-                        {
-                          key: "bowlers",
-                          label: "Bowl",
-                          color: "text-orange-400",
-                        },
-                      ].map(({ key, label, color }) => (
-                        <div key={key} className="text-center">
-                          <div className={`text-sm font-semibold ${color}`}>
-                            {
-                              composition[
-                                key as keyof Omit<
-                                  PlayingXIComposition,
-                                  "foreignPlayers"
-                                >
-                              ]
-                            }
-                          </div>
-                          <div className="text-xs text-gray-400">{label}</div>
+                      ].map(({ key, label, short }) => (
+                        <div key={key}>
+                          <Button
+                            size="sm"
+                            variant={roleFilter === key ? "default" : "outline"}
+                            onClick={() => setRoleFilter(key)}
+                            className={`text-[10px] md:text-xs px-2 md:px-3 py-1 h-auto transition-all duration-200 ${
+                              roleFilter === key
+                                ? "bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/25"
+                                : "bg-[#1a2332] border-[#2a3441] text-gray-300 hover:bg-[#1f2937] hover:border-blue-500/50 hover:text-white"
+                            }`}
+                            data-testid={`filter-role-${key}`}>
+                            <span className="hidden sm:inline">{label}</span>
+                            <span className="sm:hidden">{short}</span>
+                          </Button>
                         </div>
                       ))}
                     </div>
-                  </motion.div>
-                )}
-              </CardHeader>
-              <CardContent>
-                <AnimatePresence mode="popLayout">
-                  <div className="max-h-[50vh] overflow-y-auto">
-                    {playingXIPlayers.length === 0 ? (
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.9 }}
-                        className="text-center py-12">
-                        <p
-                          className="text-gray-400 text-sm"
-                          data-testid="text-xi-empty">
-                          Select players from the squad to add to Playing XI
-                        </p>
-                      </motion.div>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-3">
-                        {playingXIPlayers.map((player) => (
-                          <PlayerCard
-                            key={player.name}
-                            player={player}
-                            inXI={true}
-                          />
+
+                    {/* Sort Options */}
+                    <div className="flex flex-wrap gap-1">
+                      <span className="text-xs text-gray-400 font-medium w-full mb-2">
+                        Sort by Points:
+                      </span>
+                      {[
+                        { key: "none", label: "Default", icon: ArrowUpDown },
+                        {
+                          key: "highest",
+                          label: "Highest First",
+                          icon: ArrowDown,
+                          short: "High",
+                        },
+                        {
+                          key: "lowest",
+                          label: "Lowest First",
+                          icon: ArrowUp,
+                          short: "Low",
+                        },
+                      ].map(({ key, label, icon: Icon, short }) => (
+                        <div key={key}>
+                          <Button
+                            size="sm"
+                            variant={sortBy === key ? "default" : "outline"}
+                            onClick={() => setSortBy(key)}
+                            className={`text-[10px] md:text-xs px-2 md:px-3 py-1 h-auto transition-all duration-200 ${
+                              sortBy === key
+                                ? "bg-purple-600 hover:bg-purple-700 shadow-lg shadow-purple-500/25"
+                                : "bg-[#1a2332] border-[#2a3441] text-gray-300 hover:bg-[#1f2937] hover:border-purple-500/50 hover:text-white"
+                            }`}
+                            data-testid={`sort-${key}`}>
+                            <Icon className="w-3 h-3 mr-1" />
+                            <span className="hidden sm:inline">{label}</span>
+                            <span className="sm:hidden">
+                              {short || label.split(" ")[0]}
+                            </span>
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <AnimatePresence mode="popLayout">
+                    <div className="max-h-[50vh] overflow-y-auto">
+                      {restPlayers.length === 0 ? (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
+                          className="text-center py-12">
+                          <Users className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                          <p
+                            className="text-gray-400 text-sm"
+                            data-testid="text-bench-empty">
+                            {roleFilter !== "all"
+                              ? "No players found with selected filter"
+                              : "All players are in Playing XI"}
+                          </p>
+                        </motion.div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2 md:gap-3">
+                          {restPlayers.map((player) => (
+                            <PlayerCard
+                              key={player.name}
+                              player={player}
+                              inXI={false}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </AnimatePresence>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            {/* Playing XI */}
+            <motion.div variants={slideInVariants}>
+              <Card
+                className={`${DASHBOARD_COLORS.card.background} ${DASHBOARD_COLORS.card.border} transition-all duration-300 hover:shadow-lg`}>
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between">
+                    <CardTitle
+                      className="text-white flex items-center gap-2"
+                      data-testid="text-xi-title">
+                      <Trophy className="w-5 h-5 text-yellow-400" />
+                      Playing XI ({playingXI.length}/11)
+                      <div className="relative group">
+                        <button className="text-gray-400 hover:text-blue-400 focus:text-blue-400 transition-colors">
+                          <Info className="w-4 h-4" />
+                        </button>
+                        <div className="absolute left-0 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] p-3 bg-[#1a2332] border border-[#2a3441] rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200 z-50">
+                          <p className="font-semibold text-sm mb-2 text-white">
+                            Playing XI Requirements:
+                          </p>
+                          <ul className="text-xs space-y-1 list-disc list-inside text-gray-300">
+                            <li>Must have exactly 11 players</li>
+                            <li>Batsmen: 2-5 players</li>
+                            <li>Wicket-Keepers: at least 1</li>
+                            <li>All-Rounders: at least 1</li>
+                            <li>Bowlers: at least 2</li>
+                            <li>Foreign players: max 4</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </CardTitle>
+                    <div className="flex items-center gap-2">
+                      {playingXI.length > 0 && (
+                        <div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={clearAllFromXI}
+                            className="bg-red-600 hover:bg-red-700 border-red-600 text-white text-xs px-3 py-1 h-auto transition-all duration-200 shadow-lg hover:shadow-red-500/25"
+                            data-testid="button-clear-all-xi">
+                            Clear All
+                          </Button>
+                        </div>
+                      )}
+                      <ArrowLeftRight className="w-5 h-5 text-gray-400" />
+                    </div>
+                  </div>
+
+                  {/* Composition Progress */}
+                  {playingXI.length > 0 && (
+                    <motion.div
+                      className="mt-3 p-3 bg-white/5 rounded-lg"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      transition={{ duration: 0.3 }}>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+                        {[
+                          {
+                            key: "batsmen",
+                            label: "Bat",
+                            color: "text-green-400",
+                          },
+                          {
+                            key: "wicketKeepers",
+                            label: "WK",
+                            color: "text-blue-400",
+                          },
+                          {
+                            key: "allRounders",
+                            label: "AR",
+                            color: "text-purple-400",
+                          },
+                          {
+                            key: "bowlers",
+                            label: "Bowl",
+                            color: "text-orange-400",
+                          },
+                        ].map(({ key, label, color }) => (
+                          <div key={key} className="text-center">
+                            <div className={`text-sm font-semibold ${color}`}>
+                              {
+                                composition[
+                                  key as keyof Omit<
+                                    PlayingXIComposition,
+                                    "foreignPlayers"
+                                  >
+                                ]
+                              }
+                            </div>
+                            <div className="text-xs text-gray-400">{label}</div>
+                          </div>
                         ))}
                       </div>
-                    )}
-                  </div>
-                </AnimatePresence>
-              </CardContent>
-            </Card>
+                    </motion.div>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  <AnimatePresence mode="popLayout">
+                    <div className="max-h-[50vh] overflow-y-auto">
+                      {playingXIPlayers.length === 0 ? (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
+                          className="text-center py-12">
+                          <p
+                            className="text-gray-400 text-sm"
+                            data-testid="text-xi-empty">
+                            Select players from the squad to add to Playing XI
+                          </p>
+                        </motion.div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                          {playingXIPlayers.map((player) => (
+                            <PlayerCard
+                              key={player.name}
+                              player={player}
+                              inXI={true}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </AnimatePresence>
+                </CardContent>
+              </Card>
+            </motion.div>
           </motion.div>
-        </motion.div>
+        )}
       </div>
     </motion.div>
   );

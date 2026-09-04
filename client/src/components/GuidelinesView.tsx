@@ -10,7 +10,8 @@ import {
   Download, Shield, Star, Target, Globe, Clock,
   Save, Wifi, HardDrive, Info,
 } from "lucide-react";
-import { AUCTION_CONFIG, PLAYING_XI_CONFIG, KEYBOARD_SHORTCUTS } from "@shared/config";
+import { formatIndianNumber } from "@/lib/utils";
+import { useAuctionRules } from "@/hooks/useAuctionRules";
 
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -34,24 +35,6 @@ const navItems = [
   { icon: Trophy, label: "Leaderboard", desc: "Complete team rankings with circular rank indicators, medal badges for top 3, and sortable stats.", color: "text-yellow-400" },
   { icon: Gavel, label: "Auction", desc: "Live auction management with real-time bidding, player viewer, keyboard shortcuts, and animations.", color: "text-orange-400" },
   { icon: Swords, label: "Playing XI", desc: "Interactive team selection with role validation, points tracking, and CSV export for each team.", color: "text-purple-400" },
-];
-
-const auctionRules = [
-  { label: "Squad Size", value: `${AUCTION_CONFIG.minPlayers}–${AUCTION_CONFIG.maxPlayers} players`, icon: Users },
-  { label: "Foreign Players", value: `Max ${AUCTION_CONFIG.maxOverseasPlayers} per full squad`, icon: Globe },
-  { label: "Bid Increment", value: `₹${(AUCTION_CONFIG.bidIncrement).toLocaleString()} per step`, icon: DollarSign },
-  { label: "Default Budget", value: `₹${(AUCTION_CONFIG.defaultTeamBudget / 100000).toLocaleString()} Lakh`, icon: Target },
-  { label: "Base Price", value: `₹${(AUCTION_CONFIG.defaultBasePrice / 1000).toLocaleString()}K default`, icon: DollarSign },
-  { label: "Qualification", value: `Top ${AUCTION_CONFIG.teamsQualifying} teams advance`, icon: Star },
-];
-
-const playingXIRules = [
-  { role: "Total Players", rule: `Exactly ${PLAYING_XI_CONFIG.totalPlayers}`, icon: Shield },
-  { role: "Batsmen", rule: `${PLAYING_XI_CONFIG.batsmen.min}–${PLAYING_XI_CONFIG.batsmen.max} required`, icon: Target },
-  { role: "Wicket-Keepers", rule: `${PLAYING_XI_CONFIG.wicketKeepers.min}–${PLAYING_XI_CONFIG.wicketKeepers.max} (min ${PLAYING_XI_CONFIG.wicketKeepers.min})`, icon: Zap },
-  { role: "All-Rounders", rule: `At least ${PLAYING_XI_CONFIG.allRounders.min}`, icon: Star },
-  { role: "Bowlers", rule: `At least ${PLAYING_XI_CONFIG.bowlers.min}`, icon: Target },
-  { role: "Foreign Players", rule: `Max ${PLAYING_XI_CONFIG.foreignPlayers.max} in XI`, icon: Globe },
 ];
 
 const keyboardShortcuts = [
@@ -79,6 +62,26 @@ const Tag = ({ label }: { label: string }) => (
 );
 
 export const GuidelinesView = (): JSX.Element => {
+  const { rules } = useAuctionRules();
+
+  const auctionRules = [
+    { label: "Squad Size", value: `${rules.minPlayers || 11}–${rules.maxPlayers || 15} players`, icon: Users },
+    { label: "Foreign Players", value: `Max ${rules.maxOverseas || 7} per full squad`, icon: Globe },
+    { label: "Bid Increment", value: `+₹${formatIndianNumber(rules.bidIncrement || 100000)} per step`, icon: DollarSign },
+    { label: "Default Budget", value: `₹${formatIndianNumber(rules.startingBudget || 10000000)}`, icon: Target },
+    { label: "Base Price", value: `₹${formatIndianNumber(rules.defaultBasePrice || 400000)} default`, icon: DollarSign },
+    { label: "Qualification", value: `Top ${rules.teamsQualifying || 8} teams advance`, icon: Star },
+  ];
+
+  const playingXIRules = [
+    { role: "Total Players", rule: `Exactly ${rules.playingXITotal || 11}`, icon: Shield },
+    { role: "Batsmen", rule: `${rules.batsmenMin || 2}–${rules.batsmenMax || 5} required`, icon: Target },
+    { role: "Wicket-Keepers", rule: `${rules.wkMin || 1}–${rules.wkMax || 3} (min ${rules.wkMin || 1})`, icon: Zap },
+    { role: "All-Rounders", rule: `At least ${rules.allRoundersMin || 1}`, icon: Star },
+    { role: "Bowlers", rule: `At least ${rules.bowlersMin || 2}`, icon: Target },
+    { role: "Foreign Players", rule: `Max ${rules.playingXIOverseasLimit || 4} in XI`, icon: Globe },
+  ];
+
   return (
     <motion.div
       className="w-full space-y-6"
