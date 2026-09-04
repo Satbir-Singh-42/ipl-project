@@ -33,7 +33,7 @@ const TeamLogo = ({
 }) => {
   // Import helper to get team initials
   const { getTeamInitials } = supabaseService;
-  
+
   // Check if logo is a file path or abbreviation
   const isImageLogo = logo.startsWith("/") || logo.startsWith("http");
 
@@ -82,15 +82,15 @@ export const PlayerDetailsSection = (): JSX.Element => {
 
   const navigationTabsList = React.useMemo(() => {
     const list = [
-      { id: "overview", label: "OVERVIEW", isExternal: false, href: "" },
-      { id: "sold", label: "SOLD PLAYERS", isExternal: false, href: "" },
-      { id: "unsold", label: "UNSOLD PLAYERS", isExternal: false, href: "" },
-      { id: "leaderboard", label: "LEADERBOARD", isExternal: false, href: "" },
-      { id: "guidelines", label: "GUIDELINES", isExternal: false, href: "" },
-      { id: "auction", label: "AUCTION", isExternal: true, href: "/auction" },
+      { id: "overview", label: "OVERVIEW", shortLabel: "OVERVIEW", isExternal: false, href: "" },
+      { id: "sold", label: "SOLD PLAYERS", shortLabel: "SOLD", isExternal: false, href: "" },
+      { id: "unsold", label: "UNSOLD PLAYERS", shortLabel: "UNSOLD", isExternal: false, href: "" },
+      { id: "leaderboard", label: "LEADERBOARD", shortLabel: "LEADERBOARD", isExternal: false, href: "" },
+      { id: "guidelines", label: "GUIDELINES", shortLabel: "GUIDELINES", isExternal: false, href: "" },
+      { id: "auction", label: "AUCTION", shortLabel: "AUCTION", isExternal: true, href: "/auction" },
     ];
     if (isAuthenticated && role === "admin") {
-      list.push({ id: "admin", label: "ADMIN PANEL", isExternal: true, href: "/admin" });
+      list.push({ id: "admin", label: "ADMIN PANEL", shortLabel: "ADMIN", isExternal: true, href: "/admin" });
     }
     return list;
   }, [isAuthenticated, role]);
@@ -340,78 +340,64 @@ export const PlayerDetailsSection = (): JSX.Element => {
       transition={{ duration: 0.6, ease: "easeOut" }}>
       {/* Unified Header */}
       <header
-        className="sticky top-0 z-50 w-full backdrop-blur bg-[#0b2a7d]/70 border-b border-white/10"
+        className="sticky top-0 z-50 w-full backdrop-blur bg-[#0b2a7d]/80 border-b border-white/10 shadow-md"
         style={{
-          backgroundImage: `linear-gradient(90deg, rgba(24,24,74,0.9) 0%, rgba(12,28,158,0.8) 49%, rgba(24,24,74,0.9) 100%)`,
+          backgroundImage: `linear-gradient(90deg, rgba(24,24,74,0.95) 0%, rgba(12,28,158,0.85) 49%, rgba(24,24,74,0.95) 100%)`,
           backgroundSize: "cover",
           backgroundPosition: "center",
         }}>
-        <div className="w-full px-4 sm:px-6 md:px-8 lg:px-12 py-3 md:py-4">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 md:gap-4">
+        <div className="w-full px-2 sm:px-4 lg:px-6 2xl:px-8 py-2 sm:py-2.5">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-2">
             {/* Title Section */}
-            <div className="flex items-center gap-2 md:gap-4">
+            <div className="flex items-center gap-2">
               <h1
-                className="[font-family:'Work_Sans',Helvetica] font-bold text-[20px] sm:text-[24px] md:text-[28px] lg:text-[34px] leading-[24px] sm:leading-[28px] md:leading-[34px] lg:leading-[40.8px] tracking-[0]"
+                className="[font-family:'Work_Sans',Helvetica] font-bold text-sm sm:text-base md:text-lg lg:text-xl 2xl:text-2xl leading-tight tracking-[0] cursor-pointer whitespace-nowrap shrink-0"
                 data-testid="text-title">
                 <span className="text-white"> IPL 2025 </span>
                 <span className="text-[#fe6804]">Player Auction</span>
               </h1>
             </div>
 
-            {/* Navigation and Brand */}
-            <div className="flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-4 w-full md:w-auto">
+            {/* Navigation */}
+            <div className="flex items-center gap-1 w-full lg:w-auto overflow-x-auto scrollbar-hide">
               <nav
-                className="flex items-center gap-1 md:gap-2 overflow-x-auto w-full md:w-auto scrollbar-hide"
+                className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto w-full lg:w-auto scrollbar-hide"
                 aria-label="Primary navigation"
                 role="navigation">
                 <ul
-                  className="flex items-center gap-1 md:gap-2 min-w-max pr-1"
+                  className="flex items-center gap-1 sm:gap-1.5 xl:gap-2 min-w-max pr-1"
                   role="tablist">
                   {navigationTabsList.map((tab) => (
                     <li key={tab.id} role="none">
-                      <div>
-                        <Button
-                          variant="ghost"
-                          role="tab"
-                          aria-selected={activeTab === tab.id}
-                          aria-controls={`panel-${tab.id}`}
-                          data-testid={`button-tab-${tab.id}`}
-                          className={`h-auto px-2 md:px-3 lg:px-4 py-1.5 md:py-2 rounded-full text-xs md:text-sm font-semibold transition-all duration-200 focus-visible:ring-2 focus-visible:ring-[#fe6804] focus-visible:ring-offset-2 focus-visible:ring-offset-[#18184a] whitespace-nowrap ${
-                            tab.id === "admin"
-                              ? "bg-gradient-to-r from-[#fe6804] to-[#ef4123] text-white hover:opacity-90 shadow-md"
-                              : tab.isExternal
-                              ? "bg-[linear-gradient(180deg,rgba(255,107,0,1)_0%,rgba(239,65,35,1)_100%)] text-white hover:opacity-90"
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={activeTab === tab.id}
+                        aria-controls={`panel-${tab.id}`}
+                        data-testid={`button-tab-${tab.id}`}
+                        className={`h-auto px-2 sm:px-2.5 lg:px-2 xl:px-2.5 2xl:px-3.5 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-[11px] xl:text-xs font-semibold tracking-wide transition-all duration-200 whitespace-nowrap active:scale-95 ${
+                          tab.id === "admin"
+                            ? "bg-gradient-to-r from-[#fe6804] to-[#ef4123] text-white hover:opacity-90 shadow-sm"
+                            : tab.isExternal
+                              ? "bg-[linear-gradient(180deg,rgba(255,107,0,1)_0%,rgba(239,65,35,1)_100%)] text-white hover:opacity-90 shadow-sm"
                               : activeTab === tab.id
-                              ? "bg-[linear-gradient(180deg,rgba(255,107,0,1)_0%,rgba(239,65,35,1)_100%)] text-white border-b-2 border-[#fe6804]"
-                              : "bg-white/10 border border-[#90b6ff] text-white hover:text-white hover:bg-white/20 hover:border-[#fe6804]/50"
-                          }`}
-                          onClick={() => handleTabClick(tab)}>
-                          {tab.label}
-                        </Button>
-                      </div>
+                                ? "bg-[linear-gradient(180deg,rgba(255,107,0,1)_0%,rgba(239,65,35,1)_100%)] text-white shadow-sm"
+                                : "bg-white/10 border border-[#90b6ff]/60 text-white hover:text-white hover:bg-white/20 hover:border-[#fe6804]/60"
+                        }`}
+                        onClick={() => handleTabClick(tab)}>
+                        <span className="hidden 2xl:inline">{tab.label}</span>
+                        <span className="inline 2xl:hidden">{tab.shortLabel || tab.label}</span>
+                      </button>
                     </li>
                   ))}
-                  {isAuthenticated ? (
-                    <li>
-                      <Button
-                        variant="ghost"
-                        className="h-auto px-2 md:px-3 lg:px-4 py-1.5 md:py-2 rounded-full text-xs md:text-sm font-semibold transition-all duration-200 whitespace-nowrap bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30 hover:text-white"
-                        onClick={logout}
-                      >
-                        LOGOUT
-                      </Button>
-                    </li>
-                  ) : (
-                    <li>
-                      <Button
-                        variant="ghost"
-                        className="h-auto px-2 md:px-3 lg:px-4 py-1.5 md:py-2 rounded-full text-xs md:text-sm font-semibold transition-all duration-200 whitespace-nowrap bg-white/10 border border-[#90b6ff] text-white hover:bg-white/20 hover:border-[#fe6804]/50"
-                        onClick={() => setLocation("/login")}
-                      >
-                        LOGIN
-                      </Button>
-                    </li>
-                  )}
+                  <li>
+                    <button
+                      type="button"
+                      className="h-auto px-2 sm:px-2.5 lg:px-2 xl:px-2.5 2xl:px-3.5 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-[11px] xl:text-xs font-semibold tracking-wide transition-all duration-200 whitespace-nowrap active:scale-95 bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30 hover:text-white"
+                      onClick={isAuthenticated ? logout : () => setLocation("/login")}>
+                      {isAuthenticated ? "LOGOUT" : "LOGIN"}
+                    </button>
+                  </li>
                 </ul>
               </nav>
             </div>

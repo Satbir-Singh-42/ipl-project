@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button";
 interface AdminHeaderProps {
   activeTab?: "dashboard" | "players" | "teams" | "pools" | "export" | "auction" | "leaderboard";
   title?: string;
+  children?: React.ReactNode;
 }
 
-export function AdminHeader({ activeTab, title }: AdminHeaderProps) {
+export function AdminHeader({ activeTab, title, children }: AdminHeaderProps) {
   const [, setLocation] = useLocation();
   const { logout, user, role, displayName } = useAuth();
 
@@ -20,20 +21,20 @@ export function AdminHeader({ activeTab, title }: AdminHeaderProps) {
   }[] =
     role === "auctioneer"
       ? [
-          { id: "auction", label: "AUCTION", href: "/auction", isExternal: false },
-          { id: "leaderboard", label: "LEADERBOARD", shortLabel: "LEADERBOARD", href: "/admin/leaderboard", isExternal: false },
-          { id: "public", label: "PUBLIC VIEW", shortLabel: "PUBLIC", href: "/", isExternal: false },
-        ]
+        { id: "auction", label: "AUCTION", href: "/auction", isExternal: false },
+        { id: "leaderboard", label: "LEADERBOARD", shortLabel: "LEADERBOARD", href: "/admin/leaderboard", isExternal: false },
+        { id: "public", label: "PUBLIC VIEW", shortLabel: "PUBLIC", href: "/", isExternal: false },
+      ]
       : [
-          { id: "dashboard", label: "DASHBOARD", shortLabel: "DASHBOARD", href: "/admin", isExternal: false },
-          { id: "players", label: "MANAGE PLAYERS", shortLabel: "PLAYERS", href: "/admin/players", isExternal: false },
-          { id: "teams", label: "MANAGE TEAMS", shortLabel: "TEAMS", href: "/admin/teams", isExternal: false },
-          { id: "pools", label: "SETS & POOLS", shortLabel: "POOLS", href: "/admin/pools", isExternal: false },
-          { id: "leaderboard", label: "LEADERBOARD", shortLabel: "LEADERBOARD", href: "/admin/leaderboard", isExternal: false },
-          { id: "export", label: "EXPORT DATA", shortLabel: "EXPORT", href: "/admin/export", isExternal: false },
-          { id: "auction", label: "AUCTION", shortLabel: "AUCTION", href: "/auction", isExternal: true },
-          { id: "public", label: "PUBLIC VIEW", shortLabel: "PUBLIC", href: "/", isExternal: false },
-        ];
+        { id: "dashboard", label: "DASHBOARD", shortLabel: "DASHBOARD", href: "/admin", isExternal: false },
+        { id: "players", label: "MANAGE PLAYERS", shortLabel: "PLAYERS", href: "/admin/players", isExternal: false },
+        { id: "teams", label: "MANAGE TEAMS", shortLabel: "TEAMS", href: "/admin/teams", isExternal: false },
+        { id: "pools", label: "SETS & POOLS", shortLabel: "POOLS", href: "/admin/pools", isExternal: false },
+        { id: "leaderboard", label: "LEADERBOARD", shortLabel: "LEADERBOARD", href: "/admin/leaderboard", isExternal: false },
+        { id: "export", label: "EXPORT DATA", shortLabel: "EXPORT", href: "/admin/export", isExternal: false },
+        { id: "auction", label: "AUCTION", shortLabel: "AUCTION", href: "/auction", isExternal: true },
+        { id: "public", label: "PUBLIC VIEW", shortLabel: "PUBLIC", href: "/", isExternal: false },
+      ];
 
   return (
     <header
@@ -69,13 +70,12 @@ export function AdminHeader({ activeTab, title }: AdminHeaderProps) {
                   <li key={item.id}>
                     <button
                       type="button"
-                      className={`h-auto px-2 sm:px-2.5 lg:px-2 xl:px-2.5 2xl:px-3.5 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-[11px] xl:text-xs font-semibold tracking-wide transition-all duration-200 whitespace-nowrap active:scale-95 ${
-                        item.isExternal
+                      className={`h-auto px-2 sm:px-2.5 lg:px-2 xl:px-2.5 2xl:px-3.5 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-[11px] xl:text-xs font-semibold tracking-wide transition-all duration-200 whitespace-nowrap active:scale-95 ${item.isExternal
                           ? "bg-[linear-gradient(180deg,rgba(255,107,0,1)_0%,rgba(239,65,35,1)_100%)] text-white hover:opacity-90 shadow-sm"
                           : activeTab === item.id
-                          ? "bg-[linear-gradient(180deg,rgba(255,107,0,1)_0%,rgba(239,65,35,1)_100%)] text-white shadow-sm"
-                          : "bg-white/10 border border-[#90b6ff]/60 text-white hover:text-white hover:bg-white/20 hover:border-[#fe6804]/60"
-                      }`}
+                            ? "bg-[linear-gradient(180deg,rgba(255,107,0,1)_0%,rgba(239,65,35,1)_100%)] text-white shadow-sm"
+                            : "bg-white/10 border border-[#90b6ff]/60 text-white hover:text-white hover:bg-white/20 hover:border-[#fe6804]/60"
+                        }`}
                       onClick={() => setLocation(item.href)}
                     >
                       <span className="hidden 2xl:inline">{item.label}</span>
@@ -96,6 +96,11 @@ export function AdminHeader({ activeTab, title }: AdminHeaderProps) {
             </nav>
           </div>
         </div>
+        {children && (
+          <div className="mt-2 pt-2 border-t border-white/10">
+            {children}
+          </div>
+        )}
       </div>
     </header>
   );

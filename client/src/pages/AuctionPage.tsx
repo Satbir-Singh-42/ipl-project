@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useIPLData } from "@/hooks/useIPLData";
-import { supabaseService, type Player, type Pool } from "@/services/supabaseService";
+import { supabaseService, type Player, type Pool, type TeamStats } from "@/services/supabaseService";
 import confetti from "canvas-confetti";
 import {
   Trophy,
@@ -9,10 +9,11 @@ import {
   Users,
   TrendingUp,
   RefreshCw,
-  Home,
-  AlertTriangle,
+  Search,
   X,
   Layers,
+  Check,
+  Shield,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
@@ -20,7 +21,8 @@ import { AUCTION_CONFIG } from "@shared/config";
 import { useToast } from "@/hooks/use-toast";
 import { LoadingPage } from "@/components/LoadingPage";
 import { AdminHeader } from "@/components/AdminHeader";
-import { formatIndianNumber } from "@/lib/utils";
+import { cn, formatIndianNumber } from "@/lib/utils";
+import { getTeamLogo, getTeamInitials } from "@/config/teamBranding";
 
 const backgroundImage = "/images/auction/background.png";
 const unsoldStampImage = "/images/auction/unsold.png";
@@ -64,7 +66,7 @@ function PlayerImage({
 }
 
 export default function AuctionPage() {
-  const { players, isLoadingPlayers, refetchPlayers } = useIPLData();
+  const { players, isLoadingPlayers, refetchPlayers, teamStats, refetchTeams } = useIPLData();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [pools, setPools] = useState<Pool[]>([]);
@@ -84,8 +86,10 @@ export default function AuctionPage() {
   const [showUnsoldStamp, setShowUnsoldStamp] = useState(false);
   const [lastAction, setLastAction] = useState<any>(null);
   const [currentBid, setCurrentBid] = useState<number>(0);
+  const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
+  const [showTeamSelection, setShowTeamSelection] = useState(false);
+  const [isSubmittingSold, setIsSubmittingSold] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [showResetWarning, setShowResetWarning] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
@@ -186,7 +190,9 @@ export default function AuctionPage() {
     setCurrentPlayer(player);
     setViewerOpen(true);
     setShowUnsoldStamp(false);
-    setCurrentBid(0);
+    setCurrentBid(player.basePrice || 0);
+    setSelectedTeam(player.team && player.team !== "N/A" ? player.team : null);
+    setShowTeamSelection(false);
     document.body.style.overflow = "hidden";
   };
 
@@ -195,11 +201,26 @@ export default function AuctionPage() {
     setCurrentPlayer(null);
     setShowUnsoldStamp(false);
     setCurrentBid(0);
+    setSelectedTeam(null);
+    setShowTeamSelection(false);
     document.body.style.overflow = "auto";
   };
 
-  const markSold = () => {
-    if (!currentPlayer || !canvasRef.current) return;
+  const markSold = async () => {
+    if (!currentPlayer || !canvasRef.current || isSubmittingSold) return;
+
+    if (!selectedTeam) {
+      toast({
+        title: "Select Winning Team",
+        description: "Please select an IPL team badge below before marking the player as sold.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const finalPrice = currentBid > 0 ? currentBid : (currentPlayer.basePrice || 0);
+
+    setIsSubmittingSold(true);
 
     const myConfetti = confetti.create(canvasRef.current, {
       resize: true,
@@ -231,9 +252,11 @@ export default function AuctionPage() {
     const currentIndex = activeCards.findIndex(
       (p) => p.name === currentPlayer.name,
     );
-    const soldPlayer = {
+    const soldPlayer: Player = {
       ...currentPlayer,
-      soldPrice: currentBid,
+      team: selectedTeam,
+      soldPrice: finalPrice,
+      status: "sold",
       isUnsold: false,
     };
     const newActive = activeCards.filter((p) => p.name !== currentPlayer.name);
@@ -258,6 +281,30 @@ export default function AuctionPage() {
     setSoldCards(newSold);
     setCurrentPlayer(soldPlayer);
 
+    // Save to Supabase database
+    try {
+      await supabaseService.markPlayerSold(
+        currentPlayer.name,
+        selectedTeam,
+        finalPrice,
+      );
+      toast({
+        title: "Player Sold",
+        description: `${currentPlayer.name} sold to ${selectedTeam} for ₹${formatIndianNumber(finalPrice)}.`,
+      });
+      refetchTeams();
+      refetchPlayers();
+    } catch (err) {
+      console.error("Failed to mark player sold in Supabase:", err);
+      toast({
+        title: "Database Sync Warning",
+        description: "Sold locally, but failed to sync to database.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingSold(false);
+    }
+
     setTimeout(() => {
       setIsTransitioning(true);
 
@@ -265,11 +312,15 @@ export default function AuctionPage() {
         if (currentIndex < newActive.length) {
           const nextPlayer = newActive[currentIndex];
           setCurrentPlayer(nextPlayer);
-          setCurrentBid(0);
+          setCurrentBid(nextPlayer.basePrice || 0);
+          setSelectedTeam(null);
+          setShowTeamSelection(false);
         } else if (newActive.length > 0) {
           const nextPlayer = newActive[0];
           setCurrentPlayer(nextPlayer);
-          setCurrentBid(0);
+          setCurrentBid(nextPlayer.basePrice || 0);
+          setSelectedTeam(null);
+          setShowTeamSelection(false);
         } else {
           closeViewer();
         }
@@ -434,7 +485,9 @@ export default function AuctionPage() {
             nonUnsoldPlayers[0];
           if (nextPlayer) {
             setCurrentPlayer(nextPlayer);
-            setCurrentBid(0);
+            setCurrentBid(nextPlayer.basePrice || 0);
+            setSelectedTeam(null);
+            setShowTeamSelection(false);
             setShowUnsoldStamp(false);
           }
           return;
@@ -447,7 +500,9 @@ export default function AuctionPage() {
             nonUnsoldPlayers[nonUnsoldPlayers.length - 1];
           if (prevPlayer) {
             setCurrentPlayer(prevPlayer);
-            setCurrentBid(0);
+            setCurrentBid(prevPlayer.basePrice || 0);
+            setSelectedTeam(null);
+            setShowTeamSelection(false);
             setShowUnsoldStamp(false);
           }
           return;
@@ -467,7 +522,9 @@ export default function AuctionPage() {
     if (!nextPlayer) return;
 
     setCurrentPlayer(nextPlayer);
-    setCurrentBid(0);
+    setCurrentBid(nextPlayer.basePrice || 0);
+    setSelectedTeam(null);
+    setShowTeamSelection(false);
     setShowUnsoldStamp(false);
   };
 
@@ -494,11 +551,6 @@ export default function AuctionPage() {
     } else if (isRightSwipe) {
       navigatePlayer("prev");
     }
-  };
-
-  const confirmReset = () => {
-    setUnsoldPlayerNames(new Set());
-    window.location.reload();
   };
 
   const syncSoldPlayersFromSheet = async () => {
@@ -803,66 +855,48 @@ export default function AuctionPage() {
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: isPageReady ? 0 : 20, opacity: isPageReady ? 1 : 0 }}
         transition={{ duration: 0.6, delay: 0.1 }}>
-        <AdminHeader activeTab="auction" title="Player Auction" />
+        <AdminHeader activeTab="auction" title="Player Auction">
+          <div className="space-y-2 py-1">
+            {/* Line 1: Player Dashboard and stats in the same line */}
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="[font-family:'Work_Sans',Helvetica] font-bold text-base sm:text-lg md:text-xl text-white tracking-wide whitespace-nowrap">
+                Player Dashboard
+              </h2>
 
-        <div
-          className="fixed top-20 right-2 sm:top-20 sm:right-3 backdrop-blur-xl bg-black/40 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg shadow-xl border border-white/20 z-[10001] text-xs sm:text-sm font-semibold"
-          data-testid="stats-counter">
-          <div className="flex flex-col sm:flex-row gap-1 sm:gap-0 items-center">
-            <span className="text-green-400 sm:mx-2 font-bold">
-              POOL: <span data-testid="active-count">{activeCards.length}</span>
-            </span>
-            <span className="text-white/40 mx-1 hidden sm:inline">•</span>
-            <span className="text-[#00BCD4] sm:mx-2 font-bold">
-              SOLD: <span data-testid="sold-count">{soldCards.length}</span>
-            </span>
-            <span className="text-white/40 mx-1 hidden sm:inline">•</span>
-            <span className="text-red-400 sm:mx-2 font-bold">
-              UNSOLD: <span data-testid="unsold-count">{unsoldCount}</span>
-            </span>
-          </div>
-        </div>
+              <div
+                className="flex items-center backdrop-blur-xl bg-black/40 px-3 py-1 rounded-full shadow-md border border-white/15 text-xs sm:text-sm font-semibold whitespace-nowrap"
+                data-testid="stats-counter"
+              >
+                <span className="text-green-400 font-bold">
+                  POOL: <span data-testid="active-count">{activeCards.length}</span>
+                </span>
+                <span className="text-white/30 mx-2">•</span>
+                <span className="text-[#00BCD4] font-bold">
+                  SOLD: <span data-testid="sold-count">{soldCards.length}</span>
+                </span>
+                <span className="text-white/30 mx-2">•</span>
+                <span className="text-red-400 font-bold">
+                  UNSOLD: <span data-testid="unsold-count">{unsoldCount}</span>
+                </span>
+              </div>
+            </div>
 
-        <header className="backdrop-blur-md bg-black/40 p-4 sm:p-6 text-center shadow-lg border-b border-white/20">
-          <h1 className="text-xl sm:text-2xl md:text-3xl my-2 font-bold text-white drop-shadow-lg">
-            Player Dashboard
-          </h1>
-          <input
-            type="search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search players..."
-            className="my-3 mx-auto p-2.5 w-full max-w-[320px] rounded-lg border border-white/30 text-base backdrop-blur-md bg-black/30 text-white placeholder-white/50 block focus:outline-none focus:ring-2 focus:ring-green-500/50"
-            data-testid="input-search"
-          />
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 justify-center items-center">
-            <motion.button
-              onClick={() => setLocation("/")}
-              className="w-full sm:w-auto my-2 px-5 py-2.5 text-sm backdrop-blur-md bg-blue-600/90 text-white border-none rounded-lg cursor-pointer font-semibold shadow-lg flex items-center justify-center gap-2"
-              data-testid="button-home"
-              whileHover={{
-                scale: 1.05,
-                backgroundColor: "rgba(29, 78, 216, 1)",
-                transition: { duration: 0.2 },
-              }}
-              whileTap={{ scale: 0.95 }}>
-              <Home className="w-4 h-4" />
-              Home
-            </motion.button>
-            <motion.button
-              onClick={() => setShowResetWarning(true)}
-              className="w-full sm:w-auto my-2 px-5 py-2.5 text-sm backdrop-blur-md bg-green-600/90 text-white border-none rounded-lg cursor-pointer font-semibold shadow-lg"
-              data-testid="button-reset"
-              whileHover={{
-                scale: 1.05,
-                backgroundColor: "rgba(22, 163, 74, 1)",
-                transition: { duration: 0.2 },
-              }}
-              whileTap={{ scale: 0.95 }}>
-              Reset View
-            </motion.button>
+            {/* Line 2: Search bar below taking the whole line */}
+            <div className="relative w-full">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none z-10">
+                <Search className="w-4 h-4 text-[#00BCD4]" />
+              </div>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search players..."
+                className="w-full pl-10 pr-4 py-2 rounded-xl border border-white/20 text-xs sm:text-sm backdrop-blur-md bg-black/40 text-white placeholder-white/50 block focus:outline-none focus:ring-2 focus:ring-[#00BCD4]/60 focus:border-[#00BCD4] transition-all shadow-inner"
+                data-testid="input-search"
+              />
+            </div>
           </div>
-        </header>
+        </AdminHeader>
 
         <main className="p-3 sm:p-5 space-y-6 sm:space-y-8 pb-20">
           <section>
@@ -876,7 +910,7 @@ export default function AuctionPage() {
 
             {/* Set / Pool Tabs Filter */}
             {pools.length > 0 && (
-              <div className="mb-4 flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
+              <div className="mb-4 flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setSelectedPoolTab("all")}
@@ -1134,151 +1168,319 @@ export default function AuctionPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="backdrop-blur-md bg-white/10 rounded-lg p-2 border border-white/20">
-                        <div className="text-white/80 text-xs mb-0.5">Age</div>
-                        <div
-                          className="text-white text-base md:text-lg font-semibold"
-                          data-testid="viewer-age">
-                          {currentPlayer.age || "N/A"}
+                    {!showTeamSelection && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="backdrop-blur-md bg-white/10 rounded-lg p-2 border border-white/20">
+                          <div className="text-white/80 text-xs mb-0.5">Age</div>
+                          <div
+                            className="text-white text-base md:text-lg font-semibold"
+                            data-testid="viewer-age">
+                            {currentPlayer.age || "N/A"}
+                          </div>
+                        </div>
+                        <div className="backdrop-blur-md bg-white/10 rounded-lg p-2 border border-white/20">
+                          <div className="text-white/80 text-xs mb-0.5">
+                            T20 Matches
+                          </div>
+                          <div
+                            className="text-white text-base md:text-lg font-semibold"
+                            data-testid="viewer-t20">
+                            {currentPlayer.t20Matches || 0}
+                          </div>
+                        </div>
+                        <div className="backdrop-blur-md bg-white/10 rounded-lg p-2 border border-white/20">
+                          <div className="text-white/80 text-xs mb-0.5 flex items-center gap-1">
+                            <Coins className="w-3 h-3" />
+                            Base Price
+                          </div>
+                          <div
+                            className="text-white text-base md:text-lg font-bold"
+                            data-testid="viewer-base-price">
+                            ₹{formatIndianNumber(currentPlayer.basePrice || 0)}
+                          </div>
+                        </div>
+                        <div className="backdrop-blur-md bg-white/10 rounded-lg p-2 border border-white/20">
+                          <div className="text-white/80 text-xs mb-0.5 flex items-center gap-1">
+                            <TrendingUp className="w-3 h-3" />
+                            Points
+                          </div>
+                          <div
+                            className="text-white text-base md:text-lg font-bold"
+                            data-testid="viewer-points">
+                            {currentPlayer.points || 0}
+                          </div>
                         </div>
                       </div>
-                      <div className="backdrop-blur-md bg-white/10 rounded-lg p-2 border border-white/20">
-                        <div className="text-white/80 text-xs mb-0.5">
-                          T20 Matches
-                        </div>
-                        <div
-                          className="text-white text-base md:text-lg font-semibold"
-                          data-testid="viewer-t20">
-                          {currentPlayer.t20Matches || 0}
-                        </div>
-                      </div>
-                      <div className="backdrop-blur-md bg-white/10 rounded-lg p-2 border border-white/20">
-                        <div className="text-white/80 text-xs mb-0.5 flex items-center gap-1">
-                          <Coins className="w-3 h-3" />
-                          Base Price
-                        </div>
-                        <div
-                          className="text-white text-base md:text-lg font-bold"
-                          data-testid="viewer-base-price">
-                          ₹{formatIndianNumber(currentPlayer.basePrice || 0)}
-                        </div>
-                      </div>
-                      <div className="backdrop-blur-md bg-white/10 rounded-lg p-2 border border-white/20">
-                        <div className="text-white/80 text-xs mb-0.5 flex items-center gap-1">
-                          <TrendingUp className="w-3 h-3" />
-                          Points
-                        </div>
-                        <div
-                          className="text-white text-base md:text-lg font-bold"
-                          data-testid="viewer-points">
-                          {currentPlayer.points || 0}
-                        </div>
-                      </div>
-                    </div>
-
-                    {!soldCards.some((p) => p.name === currentPlayer.name) && (
-                      <motion.div
-                        onClick={
-                          isMobile
-                            ? () =>
-                                setCurrentBid((prev) =>
-                                  prev === 0
-                                    ? Number(currentPlayer.basePrice) || 0
-                                    : prev + AUCTION_CONFIG.bidIncrement,
-                                )
-                            : undefined
-                        }
-                        className={`backdrop-blur-xl bg-blue-600/10 rounded-lg p-3 md:p-4 border-2 border-blue-400/30 select-none transition-transform ${isMobile ? "cursor-pointer active:scale-95" : ""}`}
-                        data-testid="bid-increment-area"
-                        whileHover={
-                          isMobile
-                            ? {
-                                scale: 1.02,
-                                borderColor: "rgba(96, 165, 250, 0.6)",
-                                backgroundColor: "rgba(37, 99, 235, 0.15)",
-                              }
-                            : undefined
-                        }
-                        whileTap={isMobile ? { scale: 0.98 } : undefined}>
-                        <div className="text-blue-300 text-xs md:text-sm mb-1 font-semibold flex items-center justify-between">
-                          <span>Current Bid</span>
-                          {isMobile && (
-                            <span className="text-[10px] md:text-xs bg-blue-500/30 px-2 py-0.5 rounded">
-                              TAP TO INCREMENT
-                            </span>
-                          )}
-                        </div>
-                        <div
-                          className="text-white text-2xl md:text-3xl font-bold"
-                          data-testid="viewer-current-bid">
-                          {currentBid > 0
-                            ? `₹${formatIndianNumber(currentBid)}`
-                            : "Bid to Start"}
-                        </div>
-                      </motion.div>
                     )}
 
                     {!soldCards.some((p) => p.name === currentPlayer.name) && (
-                      <motion.div
-                        className="flex flex-col md:flex-row gap-3 md:gap-2"
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.3, delay: 0.2 }}>
-                        <motion.button
-                          onClick={markSold}
-                          className="flex-1 px-4 py-4 md:py-2.5 text-base md:text-base font-bold border-none rounded-xl cursor-pointer shadow-lg backdrop-blur-md bg-green-600/90 text-white min-h-[48px] touch-manipulation"
-                          data-testid="button-sold"
-                          whileHover={{
-                            scale: 1.05,
-                            backgroundColor: "rgba(22, 163, 74, 1)",
-                            boxShadow: "0 0 20px rgba(34, 197, 94, 0.5)",
-                          }}
-                          whileTap={{ scale: 0.95 }}
-                          transition={{ duration: 0.2 }}>
-                          ✓ Sold
-                        </motion.button>
-                        <motion.button
-                          onClick={markUnsold}
-                          className="flex-1 px-4 py-4 md:py-2.5 text-base md:text-base font-bold border-none rounded-xl cursor-pointer shadow-lg backdrop-blur-md bg-red-600/90 text-white min-h-[48px] touch-manipulation"
-                          data-testid="button-unsold"
-                          whileHover={{
-                            scale: 1.05,
-                            backgroundColor: "rgba(220, 38, 38, 1)",
-                            boxShadow: "0 0 20px rgba(239, 68, 68, 0.5)",
-                          }}
-                          whileTap={{ scale: 0.95 }}
-                          transition={{ duration: 0.2 }}>
-                          ✗ Unsold
-                        </motion.button>
-                        <motion.button
-                          onClick={closeViewer}
-                          className="px-4 py-4 md:py-2.5 text-base md:text-base font-semibold border-none rounded-xl cursor-pointer shadow-lg backdrop-blur-md bg-gray-600/90 text-white min-h-[48px] touch-manipulation"
-                          data-testid="button-close"
-                          whileHover={{
-                            scale: 1.05,
-                            backgroundColor: "rgba(75, 85, 99, 1)",
-                          }}
-                          whileTap={{ scale: 0.95 }}
-                          transition={{ duration: 0.2 }}>
-                          Cancel
-                        </motion.button>
-                      </motion.div>
+                      <div className="space-y-3">
+                        {!showTeamSelection ? (
+                          <>
+                            {/* Current Bid Display */}
+                            <motion.div
+                              onClick={
+                                isMobile
+                                  ? () =>
+                                      setCurrentBid((prev) =>
+                                        prev === 0
+                                          ? Number(currentPlayer.basePrice) || 0
+                                          : prev + AUCTION_CONFIG.bidIncrement,
+                                      )
+                                  : undefined
+                              }
+                              className={`backdrop-blur-xl bg-blue-600/10 rounded-xl p-3 md:p-3.5 border-2 border-blue-400/30 select-none transition-transform ${isMobile ? "cursor-pointer active:scale-95" : ""}`}
+                              data-testid="bid-increment-area"
+                              whileHover={
+                                isMobile
+                                  ? {
+                                      scale: 1.02,
+                                      borderColor: "rgba(96, 165, 250, 0.6)",
+                                      backgroundColor: "rgba(37, 99, 235, 0.15)",
+                                    }
+                                  : undefined
+                              }
+                              whileTap={isMobile ? { scale: 0.98 } : undefined}>
+                              <div className="text-blue-300 text-xs md:text-sm mb-1 font-semibold flex items-center justify-between">
+                                <span>Current Bid</span>
+                                {isMobile && (
+                                  <span className="text-[10px] md:text-xs bg-blue-500/30 px-2 py-0.5 rounded font-bold">
+                                    TAP TO INCREMENT
+                                  </span>
+                                )}
+                              </div>
+                              <div
+                                className="text-white text-2xl md:text-3xl font-bold"
+                                data-testid="viewer-current-bid">
+                                {currentBid > 0
+                                  ? `₹${formatIndianNumber(currentBid)}`
+                                  : "Bid to Start"}
+                              </div>
+                            </motion.div>
+
+                            {/* Quick Bid Increment Buttons */}
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {[
+                                { label: "+20L", val: 2000000 },
+                                { label: "+50L", val: 5000000 },
+                                { label: "+1Cr", val: 10000000 },
+                                { label: "+2Cr", val: 20000000 },
+                              ].map((inc) => (
+                                <button
+                                  key={inc.label}
+                                  type="button"
+                                  onClick={() => {
+                                    setCurrentBid((prev) => {
+                                      const base = prev === 0 ? (currentPlayer.basePrice || 0) : prev;
+                                      return base + inc.val;
+                                    });
+                                  }}
+                                  className="flex-1 min-w-[50px] py-1.5 px-2 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 border border-white/20 text-xs font-bold text-white transition-all text-center"
+                                >
+                                  {inc.label}
+                                </button>
+                              ))}
+                              <button
+                                type="button"
+                                onClick={() => setCurrentBid(currentPlayer.basePrice || 0)}
+                                className="py-1.5 px-2.5 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 active:scale-95 border border-orange-400/40 text-xs font-bold text-orange-300 transition-all"
+                                title="Reset to Base Price"
+                              >
+                                Reset
+                              </button>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <motion.div
+                              className="flex flex-col md:flex-row gap-2.5 pt-1"
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ duration: 0.3, delay: 0.1 }}>
+                              <motion.button
+                                onClick={() => setShowTeamSelection(true)}
+                                className="flex-1 px-4 py-3 text-base font-bold border-none rounded-xl cursor-pointer shadow-lg backdrop-blur-md bg-green-600/90 text-white min-h-[48px] touch-manipulation transition-all"
+                                data-testid="button-sold"
+                                whileHover={{
+                                  scale: 1.03,
+                                  backgroundColor: "rgba(22, 163, 74, 1)",
+                                  boxShadow: "0 0 20px rgba(34, 197, 94, 0.5)",
+                                }}
+                                whileTap={{ scale: 0.95 }}
+                                transition={{ duration: 0.2 }}>
+                                ✓ Sold
+                              </motion.button>
+                              <motion.button
+                                onClick={markUnsold}
+                                className="flex-1 px-4 py-3 text-base font-bold border-none rounded-xl cursor-pointer shadow-lg backdrop-blur-md bg-red-600/90 text-white min-h-[48px] touch-manipulation"
+                                data-testid="button-unsold"
+                                whileHover={{
+                                  scale: 1.03,
+                                  backgroundColor: "rgba(220, 38, 38, 1)",
+                                  boxShadow: "0 0 20px rgba(239, 68, 68, 0.5)",
+                                }}
+                                whileTap={{ scale: 0.95 }}
+                                transition={{ duration: 0.2 }}>
+                                ✗ Unsold
+                              </motion.button>
+                              <motion.button
+                                onClick={closeViewer}
+                                className="px-4 py-3 text-base font-semibold border-none rounded-xl cursor-pointer shadow-lg backdrop-blur-md bg-gray-600/90 text-white min-h-[48px] touch-manipulation"
+                                data-testid="button-close"
+                                whileHover={{
+                                  scale: 1.03,
+                                  backgroundColor: "rgba(75, 85, 99, 1)",
+                                }}
+                                whileTap={{ scale: 0.95 }}
+                                transition={{ duration: 0.2 }}>
+                                Cancel
+                              </motion.button>
+                            </motion.div>
+                          </>
+                        ) : (
+                          /* Team Selection Step: Only visible after clicking Sold, displays only team icons */
+                          <div className="space-y-3 p-3.5 rounded-2xl bg-black/50 border border-white/15 backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
+                            <div className="text-center">
+                              <div className="text-xs text-[#00BCD4] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5">
+                                <Shield className="w-3.5 h-3.5" />
+                                Select Winning Team
+                              </div>
+                              <div className="text-white text-base sm:text-lg font-bold mt-0.5">
+                                Final Price: <span className="text-green-400 font-extrabold">₹{formatIndianNumber(currentBid > 0 ? currentBid : (currentPlayer.basePrice || 0))}</span>
+                              </div>
+                            </div>
+
+                            {/* Only Team Icons - 10 teams in a clean grid */}
+                            <div className="grid grid-cols-5 gap-3 sm:gap-4 py-2 justify-items-center">
+                              {(teamStats || []).map((team) => {
+                                const isSelected = selectedTeam === team.teamName;
+                                const currentPrice = currentBid > 0 ? currentBid : (currentPlayer.basePrice || 0);
+                                const cannotAfford = team.fundsRemaining < currentPrice;
+                                const isSquadFull = team.playersCount >= AUCTION_CONFIG.maxPlayers;
+                                const isOverseasFull = currentPlayer.overseas && (team.overseasCount >= AUCTION_CONFIG.maxOverseasPlayers);
+                                const isDisabled = cannotAfford || isSquadFull || isOverseasFull;
+
+                                const teamLogo = team.logoUrl || getTeamLogo(team.teamName);
+                                const isImageLogo = teamLogo && (teamLogo.startsWith('/') || teamLogo.startsWith('http'));
+
+                                let disabledReason = "";
+                                if (cannotAfford) disabledReason = "Insufficient Funds";
+                                else if (isSquadFull) disabledReason = "Squad Full (15/15)";
+                                else if (isOverseasFull) disabledReason = "Overseas Full (7/7)";
+
+                                return (
+                                  <button
+                                    key={team.teamId || team.teamName}
+                                    type="button"
+                                    disabled={isDisabled}
+                                    onClick={() => setSelectedTeam(team.teamName)}
+                                    title={`${team.teamName} (Purse: ₹${formatIndianNumber(team.fundsRemaining)})${disabledReason ? ` - ${disabledReason}` : ''}`}
+                                    className={cn(
+                                      "relative w-12 h-12 sm:w-14 sm:h-14 rounded-full p-0.5 border-2 transition-all duration-200 flex items-center justify-center flex-shrink-0 cursor-pointer",
+                                      isSelected
+                                        ? "border-[#00BCD4] bg-[#00BCD4]/25 scale-110 shadow-lg shadow-[#00BCD4]/40 ring-4 ring-[#00BCD4]/30"
+                                        : isDisabled
+                                        ? "border-white/10 opacity-30 cursor-not-allowed grayscale"
+                                        : "border-white/25 bg-black/60 hover:border-[#00BCD4] hover:scale-105 active:scale-95"
+                                    )}
+                                  >
+                                    <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center bg-black/40">
+                                      {isImageLogo ? (
+                                        <img
+                                          src={teamLogo}
+                                          alt={team.teamName}
+                                          className="w-full h-full object-cover"
+                                          onError={(e) => {
+                                            (e.target as HTMLElement).style.display = "none";
+                                          }}
+                                        />
+                                      ) : (
+                                        <span className="text-[10px] sm:text-xs font-bold text-white">
+                                          {getTeamInitials(team.teamName)}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {isSelected && (
+                                      <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#00BCD4] text-black flex items-center justify-center shadow-md">
+                                        <Check className="w-3 h-3 stroke-[3]" />
+                                      </div>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* Selected Team Label */}
+                            {selectedTeam ? (
+                              <div className="text-center text-xs font-bold text-white">
+                                Selected: <span className="text-[#00BCD4]">{selectedTeam}</span>
+                              </div>
+                            ) : (
+                              <div className="text-center text-[11px] text-white/50 italic">
+                                Click a team icon above to assign
+                              </div>
+                            )}
+
+                            {/* Confirm / Back Buttons */}
+                            <div className="flex gap-2 pt-1">
+                              <motion.button
+                                onClick={markSold}
+                                disabled={!selectedTeam || isSubmittingSold}
+                                className={cn(
+                                  "flex-1 px-4 py-2.5 text-sm font-bold border-none rounded-xl cursor-pointer shadow-lg backdrop-blur-md text-white min-h-[44px] touch-manipulation transition-all",
+                                  selectedTeam && !isSubmittingSold
+                                    ? "bg-green-600/90 hover:bg-green-600 shadow-green-500/30 cursor-pointer"
+                                    : "bg-gray-600/40 opacity-50 cursor-not-allowed"
+                                )}
+                                whileHover={selectedTeam && !isSubmittingSold ? { scale: 1.02 } : undefined}
+                                whileTap={selectedTeam && !isSubmittingSold ? { scale: 0.98 } : undefined}>
+                                {isSubmittingSold
+                                  ? "Saving..."
+                                  : selectedTeam
+                                  ? `✓ Confirm Sold to ${selectedTeam}`
+                                  : "Select Team Above"}
+                              </motion.button>
+                              <motion.button
+                                onClick={() => {
+                                  setShowTeamSelection(false);
+                                  setSelectedTeam(null);
+                                }}
+                                className="px-4 py-2.5 text-sm font-semibold border-none rounded-xl cursor-pointer shadow-lg backdrop-blur-md bg-gray-600/90 text-white min-h-[44px] touch-manipulation"
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}>
+                                Back
+                              </motion.button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     )}
 
                     {soldCards.some((p) => p.name === currentPlayer.name) && (
-                      <div className="bg-green-500/20 backdrop-blur-sm border border-green-400/50 rounded-lg px-4 py-3 text-center">
-                        <div className="text-green-300 font-bold text-sm mb-1">
-                          SOLD
+                      <div className="bg-green-500/20 backdrop-blur-sm border border-green-400/50 rounded-xl p-4 text-center space-y-2">
+                        <div className="text-green-300 font-bold text-xs uppercase tracking-wider">
+                          SOLD IN AUCTION
                         </div>
-                        <div className="text-white font-bold text-xl md:text-2xl">
+                        <div className="text-white font-bold text-2xl md:text-3xl">
                           {currentPlayer.soldPrice > 0
                             ? `₹${formatIndianNumber(currentPlayer.soldPrice)}`
                             : "N/A"}
                         </div>
                         {currentPlayer.team && currentPlayer.team !== "N/A" && (
-                          <div className="text-white text-sm font-semibold mt-2">
-                            {currentPlayer.team}
+                          <div className="inline-flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-full border border-white/20">
+                            <div className="w-6 h-6 rounded-full overflow-hidden bg-black/40 border border-white/20 flex items-center justify-center">
+                              <img
+                                src={getTeamLogo(currentPlayer.team)}
+                                alt={currentPlayer.team}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  (e.target as HTMLElement).style.display = "none";
+                                }}
+                              />
+                            </div>
+                            <span className="text-white text-sm font-bold">
+                              {currentPlayer.team}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -1302,79 +1504,6 @@ export default function AuctionPage() {
                     </motion.button>
                   </div>
                 )}
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence>
-          {showResetWarning && (
-            <motion.div
-              className="fixed inset-0 flex items-center justify-center z-[10002] p-4"
-              data-testid="reset-warning-modal"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}>
-              <motion.div
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-                onClick={() => setShowResetWarning(false)}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}></motion.div>
-
-              <motion.div
-                className="relative backdrop-blur-xl bg-white/10 rounded-2xl overflow-hidden shadow-2xl border border-red-500/50 max-w-md w-full z-[10003]"
-                initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.9, opacity: 0, y: 20 }}
-                transition={{ duration: 0.3, ease: "easeOut" }}>
-                <div className="p-6 space-y-4">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-6 h-6 text-red-500 flex-shrink-0 mt-1" />
-                    <div className="flex-1">
-                      <h3 className="text-xl font-bold text-white mb-2">
-                        Reset Auction View?
-                      </h3>
-                      <p className="text-white/80 text-sm leading-relaxed">
-                        All local auction state will be reset.
-                        Database records will not be affected.
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setShowResetWarning(false)}
-                      className="text-white/60 hover:text-white transition-colors"
-                      data-testid="button-close-warning">
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
-
-                  <div className="flex gap-3 pt-2">
-                    <motion.button
-                      onClick={() => setShowResetWarning(false)}
-                      className="flex-1 px-4 py-2.5 text-sm font-semibold border-none rounded-lg cursor-pointer backdrop-blur-md bg-gray-600/90 text-white"
-                      data-testid="button-cancel-reset"
-                      whileHover={{
-                        scale: 1.02,
-                        backgroundColor: "rgba(75, 85, 99, 1)",
-                      }}
-                      whileTap={{ scale: 0.98 }}>
-                      Cancel
-                    </motion.button>
-                    <motion.button
-                      onClick={confirmReset}
-                      className="flex-1 px-4 py-2.5 text-sm font-bold border-none rounded-lg cursor-pointer backdrop-blur-md bg-red-600/90 text-white"
-                      data-testid="button-confirm-reset"
-                      whileHover={{
-                        scale: 1.02,
-                        backgroundColor: "rgba(220, 38, 38, 1)",
-                        boxShadow: "0 0 20px rgba(239, 68, 68, 0.4)",
-                      }}
-                      whileTap={{ scale: 0.98 }}>
-                      Reset Now
-                    </motion.button>
-                  </div>
-                </div>
               </motion.div>
             </motion.div>
           )}
