@@ -14,7 +14,7 @@ export interface Player {
   age?: number;
   basePrice: number;
   soldPrice: number;
-  status: "sold" | "unsold";
+  status: "sold" | "unsold" | "available";
   overseas: boolean;
   points?: number;
   originalIndex?: number;
@@ -46,8 +46,22 @@ export interface Team {
   fundsRemaining: number;
   overseasPlayers: number;
   totalPlayers: number;
-  borderColor: string;
-  bgGradient: string;
+  totalPoints?: number;
+  startingBudget?: number;
+  totalSpent?: number;
+  borderColor?: string;
+  bgGradient?: string;
+}
+
+export interface LeaderboardTeam {
+  teamId: string;
+  teamName: string;
+  playersCount: number;
+  overseasCount: number;
+  totalSpent: number;
+  fundsRemaining: number;
+  startingBudget: number;
+  totalPoints: number;
 }
 
 export interface TeamStats {
@@ -114,6 +128,12 @@ class SupabaseService {
       row.status === "sold" &&
       (row.sold_price || 0) > 0 &&
       (row.sold_to_team || "").trim() !== "";
+    const isUnsold = !isSold && (row.status === "unsold" || row.status === "Unsold");
+    const status: "sold" | "unsold" | "available" = isSold
+      ? "sold"
+      : isUnsold
+      ? "unsold"
+      : "available";
 
     return {
       name: row.name,
@@ -123,13 +143,13 @@ class SupabaseService {
       age: row.age || undefined,
       basePrice: Number(row.base_price) || 0,
       soldPrice: isSold ? Number(row.sold_price) || 0 : 0,
-      status: isSold ? "sold" : "unsold",
+      status,
       overseas: isOverseas,
       points: row.eval_points || 0,
       originalIndex: index,
       images: row.image_url || "",
       t20Matches: row.t20_matches || undefined,
-      isUnsold: false,
+      isUnsold,
       dbId: row.id,
       runs: row.runs || undefined,
       battingSr: row.batting_sr ? Number(row.batting_sr) : undefined,
@@ -151,25 +171,35 @@ class SupabaseService {
   // ─── READ METHODS ───
 
   async getPlayers(): Promise<Player[]> {
-    const { data, error } = await supabase
-      .from("players")
-      .select("*")
-      .order("id", { ascending: true });
+    const [playersRes, poolsRes] = await Promise.all([
+      supabase.from("players").select("*").order("id", { ascending: true }),
+      supabase.from("pools").select("id, order_index").order("order_index", { ascending: true }),
+    ]);
 
-    if (error) {
-      console.error("Failed to fetch players:", error.message);
+    if (playersRes.error) {
+      console.error("Failed to fetch players:", playersRes.error.message);
       return [];
     }
 
-    const mapped = (data || []).map((row: DBPlayer, index: number) =>
+    const poolOrderMap = new Map<number, number>();
+    (poolsRes.data || []).forEach((p: { id: number; order_index: number }, idx: number) => {
+      poolOrderMap.set(p.id, p.order_index ?? idx + 1);
+    });
+
+    const mapped = (playersRes.data || []).map((row: DBPlayer, index: number) =>
       this.toPlayer(row, index),
     );
 
-    // In-memory sort: by auctionOrder if present, else by DB id
+    // Sort by pool sequence first, then by auction_order, then by dbId
     return mapped.sort((a, b) => {
+      const poolA = a.poolId ? poolOrderMap.get(a.poolId) ?? 9999 : 99999;
+      const poolB = b.poolId ? poolOrderMap.get(b.poolId) ?? 9999 : 99999;
+      if (poolA !== poolB) {
+        return poolA - poolB;
+      }
       const orderA = a.auctionOrder ?? 0;
       const orderB = b.auctionOrder ?? 0;
-      if (orderA !== 0 || orderB !== 0) {
+      if (orderA !== orderB) {
         return orderA - orderB;
       }
       return (a.dbId ?? 0) - (b.dbId ?? 0);
@@ -420,6 +450,9 @@ class SupabaseService {
   }
 
   async deletePlayer(id: number): Promise<void> {
+    // Delete any auction_log entries referencing this player first
+    await supabase.from("auction_log").delete().eq("player_id", id);
+    // Delete the player row from database
     const { error } = await supabase.from("players").delete().eq("id", id);
     if (error) throw new Error(`Failed to delete player: ${error.message}`);
   }
@@ -481,6 +514,29 @@ class SupabaseService {
   }
 
   async deleteTeam(slug: string): Promise<void> {
+    const { data: teamRow } = await supabase
+      .from("teams")
+      .select("name, slug")
+      .eq("slug", slug)
+      .maybeSingle();
+
+    const teamName = teamRow?.name || slug;
+
+    // Reset any players that were assigned or sold to this team back to available
+    await supabase
+      .from("players")
+      .update({
+        sold_to_team: null,
+        sold_price: 0,
+        status: "available",
+        sold_at: null,
+      })
+      .or(`sold_to_team.eq.${slug},sold_to_team.eq.${teamName}`);
+
+    // Clean up auction log for this team
+    await supabase.from("auction_log").delete().eq("team_name", teamName);
+
+    // Delete team from database
     const { error } = await supabase.from("teams").delete().eq("slug", slug);
     if (error) throw new Error(`Failed to delete team: ${error.message}`);
   }
@@ -503,6 +559,50 @@ class SupabaseService {
 
     const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
     return data.publicUrl;
+  }
+
+  async uploadImageFromUrl(
+    bucket: "player-images" | "team-logos",
+    url: string,
+  ): Promise<string> {
+    const trimmed = url.trim();
+    if (!trimmed) return "";
+
+    // If it's already a local relative path or already in Supabase storage, keep as-is
+    if (trimmed.startsWith("/") || trimmed.includes("supabase.co/storage/v1/object/public/")) {
+      return trimmed;
+    }
+
+    try {
+      const response = await fetch(trimmed);
+      if (!response.ok) return trimmed;
+
+      const blob = await response.blob();
+      const contentType = blob.type || "image/png";
+      const ext = contentType.includes("jpeg") || contentType.includes("jpg")
+        ? "jpg"
+        : contentType.includes("webp")
+        ? "webp"
+        : contentType.includes("svg")
+        ? "svg"
+        : "png";
+
+      const filename = `url-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from(bucket)
+        .upload(filename, blob, { contentType, cacheControl: "3600", upsert: true });
+
+      if (uploadError) {
+        console.warn(`Failed to store external image in bucket ${bucket}:`, uploadError.message);
+        return trimmed;
+      }
+
+      const { data } = supabase.storage.from(bucket).getPublicUrl(filename);
+      return data.publicUrl || trimmed;
+    } catch (err) {
+      console.warn(`Could not download external image to bucket:`, err);
+      return trimmed;
+    }
   }
 
   // ─── POOLS & SETS MANAGEMENT ───
@@ -726,20 +826,51 @@ class SupabaseService {
       };
     }
 
-    const { data: unsoldPlayers, error: fetchError } = await supabase
+    // Fetch players marked unsold by status
+    const { data: unsoldByStatus } = await supabase
       .from("players")
       .select("id")
-      .eq("status", "unsold")
+      .or("status.eq.unsold,status.eq.Unsold")
       .order("eval_points", { ascending: false });
 
-    if (fetchError) throw new Error(`Failed to fetch unsold players: ${fetchError.message}`);
+    // Fetch players recorded as unsold in auction logs
+    const { data: unsoldLogs } = await supabase
+      .from("auction_log")
+      .select("player_name")
+      .eq("action", "unsold");
 
-    const playerIds = (unsoldPlayers || []).map((p: { id: number }) => p.id);
-    for (let i = 0; i < playerIds.length; i++) {
-      await supabase
-        .from("players")
-        .update({ pool_id: pool.id, auction_order: i + 1 })
-        .eq("id", playerIds[i]);
+    const playerIdsSet = new Set<number>();
+    (unsoldByStatus || []).forEach((p: { id: number }) => playerIdsSet.add(p.id));
+
+    if (unsoldLogs && unsoldLogs.length > 0) {
+      const logNames = unsoldLogs.map((l: { player_name: string }) => l.player_name).filter(Boolean);
+      if (logNames.length > 0) {
+        const { data: playersFromLogs } = await supabase
+          .from("players")
+          .select("id")
+          .in("name", logNames);
+        (playersFromLogs || []).forEach((p: { id: number }) => playerIdsSet.add(p.id));
+      }
+    }
+
+    const playerIds = Array.from(playerIdsSet);
+    if (playerIds.length > 0) {
+      await Promise.all([
+        ...playerIds.map((id, idx) =>
+          supabase
+            .from("players")
+            .update({
+              pool_id: pool.id,
+              auction_order: idx + 1,
+              status: "available",
+              sold_price: 0,
+              sold_to_team: null,
+              sold_at: null,
+            })
+            .eq("id", id)
+        ),
+        supabase.from("auction_log").delete().eq("action", "unsold"),
+      ]);
     }
 
     return { pool, count: playerIds.length };
@@ -876,12 +1007,18 @@ class SupabaseService {
   async clearAllUnsold(): Promise<number> {
     try {
       const { data } = await supabase
-        .from("auction_log")
-        .select("id")
-        .eq("action", "unsold");
-      const count = data ? data.length : 0;
+        .from("players")
+        .update({
+          status: "available",
+          sold_price: 0,
+          sold_to_team: null,
+          sold_at: null,
+        })
+        .or("status.eq.unsold,status.eq.Unsold")
+        .select("id");
+
       await supabase.from("auction_log").delete().eq("action", "unsold");
-      return count;
+      return data ? data.length : 0;
     } catch {
       return 0;
     }

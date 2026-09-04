@@ -167,28 +167,33 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: "easeOut" }}>
-      <Card className="w-full bg-[#0f1629] border-[#1a2332]">
-        <CardHeader className="p-4 md:p-6">
-          <CardTitle className="text-wwwiplt-2-0comwhite text-lg md:text-xl font-bold">
-            Team Leaderboard ({leaderboard.length})
+      transition={{ duration: 0.5, ease: "easeOut" }}
+      className="w-full"
+    >
+      <Card className="w-full bg-[#0f1629] border border-white/10 rounded-2xl overflow-hidden shadow-2xl backdrop-blur-xl">
+        <CardHeader className="p-3.5 sm:p-5 md:p-6 border-b border-white/10 bg-[#18184a]/60">
+          <CardTitle className="text-white text-base sm:text-lg md:text-xl font-bold font-['Work_Sans',sans-serif] flex items-center justify-between">
+            <span>Team Leaderboard</span>
+            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30">
+              {leaderboard.length} Teams
+            </span>
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[700px]">
+          <div className="w-full overflow-x-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
+            <table className="w-full min-w-[620px] text-left border-collapse">
               <thead>
-                <tr className="bg-[#1a2332] border-b border-[#2a3441]">
+                <tr className="bg-[#18184a]/90 border-b border-white/10 text-slate-300 text-xs sm:text-sm font-semibold">
                   <th
-                    className="p-3 md:p-4 text-left text-gray-300 text-sm font-semibold cursor-pointer hover:bg-[#2a3441] transition-colors"
+                    className="py-3 px-2.5 sm:px-3.5 text-center cursor-pointer hover:bg-white/5 transition-colors whitespace-nowrap"
                     onClick={() => handleSort("rank")}>
-                    <div className="flex items-center">
+                    <div className="flex items-center justify-center">
                       Rank
                       {getSortIcon("rank")}
                     </div>
                   </th>
                   <th
-                    className="p-3 md:p-4 text-left text-gray-300 text-sm font-semibold cursor-pointer hover:bg-[#2a3441] transition-colors"
+                    className="py-3 px-2.5 sm:px-3.5 text-left cursor-pointer hover:bg-white/5 transition-colors whitespace-nowrap min-w-[140px]"
                     onClick={() => handleSort("teamName")}>
                     <div className="flex items-center">
                       Team Name
@@ -196,66 +201,78 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                     </div>
                   </th>
                   <th
-                    className="p-3 md:p-4 text-center text-gray-300 text-sm font-semibold cursor-pointer hover:bg-[#2a3441] transition-colors"
+                    className="py-3 px-2.5 sm:px-3 text-center cursor-pointer hover:bg-white/5 transition-colors whitespace-nowrap"
                     onClick={() => handleSort("totalSpent")}>
                     <div className="flex items-center justify-center">
-                      Total Spent
+                      <span className="hidden md:inline">Total </span>Spent
                       {getSortIcon("totalSpent")}
                     </div>
                   </th>
                   <th
-                    className="p-3 md:p-4 text-center text-gray-300 text-sm font-semibold cursor-pointer hover:bg-[#2a3441] transition-colors"
+                    className="py-3 px-2.5 sm:px-3 text-center cursor-pointer hover:bg-white/5 transition-colors whitespace-nowrap"
                     onClick={() => handleSort("fundsRemaining")}>
                     <div className="flex items-center justify-center">
-                      Remaining Budget
+                      <span className="hidden md:inline">Remaining </span>Budget
                       {getSortIcon("fundsRemaining")}
                     </div>
                   </th>
                   <th
-                    className="p-3 md:p-4 text-center text-gray-300 text-sm font-semibold cursor-pointer hover:bg-[#2a3441] transition-colors"
+                    className="py-3 px-2 sm:px-3 text-center cursor-pointer hover:bg-white/5 transition-colors whitespace-nowrap"
                     onClick={() => handleSort("playersCount")}>
                     <div className="flex items-center justify-center">
-                      Total Players
+                      <span className="hidden sm:inline">Total </span>Squad
                       {getSortIcon("playersCount")}
                     </div>
                   </th>
                   <th
-                    className="p-3 md:p-4 text-center text-gray-300 text-sm font-semibold cursor-pointer hover:bg-[#2a3441] transition-colors"
+                    className="py-3 px-2 sm:px-3 text-center cursor-pointer hover:bg-white/5 transition-colors whitespace-nowrap"
                     onClick={() => handleSort("overseasCount")}>
                     <div className="flex items-center justify-center">
-                      Foreign Players
+                      Overseas
                       {getSortIcon("overseasCount")}
                     </div>
                   </th>
                   <th
-                    className="p-3 md:p-4 text-center text-gray-300 text-sm font-semibold cursor-pointer hover:bg-[#2a3441] transition-colors"
+                    className="py-3 px-2.5 sm:px-3.5 text-center cursor-pointer hover:bg-white/5 transition-colors whitespace-nowrap"
                     onClick={() => handleSort("totalPoints")}>
                     <div className="flex items-center justify-center">
-                      Total Team Points
+                      Points
                       {getSortIcon("totalPoints")}
                     </div>
                   </th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-white/5">
                 {sortedLeaderboard.map((team, index) => {
                   const isEven = index % 2 === 0;
                   const rank = rankMap.get(team.teamId) ?? index + 1;
+                  const isTop3 = rank <= 3;
 
                   return (
                     <tr
                       key={team.teamId}
-                      className={`border-b border-[#2a3441] hover:bg-[#1a2332] transition-colors ${
-                        isEven ? "bg-[#0f1629]" : "bg-[#151b2e]"
+                      className={`hover:bg-white/[0.06] transition-colors ${
+                        isEven ? "bg-[#0f1629]/80" : "bg-[#141b33]/80"
                       }`}>
-                      <td className="p-3 md:p-4 text-center">
-                        <div className="flex items-center justify-center w-7 h-7 rounded-full bg-gradient-to-r from-orange-500 to-red-500 text-white font-bold text-sm">
+                      <td className="py-3 px-2.5 sm:px-3.5 text-center">
+                        <div
+                          className={`flex items-center justify-center w-6 h-6 sm:w-7 sm:h-7 mx-auto rounded-full font-bold text-xs sm:text-sm shadow-sm ${
+                            rank === 1
+                              ? "bg-gradient-to-r from-amber-400 to-yellow-500 text-black shadow-amber-500/30"
+                              : rank === 2
+                              ? "bg-gradient-to-r from-slate-200 to-slate-400 text-black shadow-slate-300/30"
+                              : rank === 3
+                              ? "bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-orange-500/30"
+                              : "bg-white/10 text-white/80 border border-white/15"
+                          }`}
+                        >
                           {rank}
                         </div>
                       </td>
-                      <td className="p-3 md:p-4">
-                        <div className="flex items-center gap-3">
+                      <td className="py-3 px-2.5 sm:px-3.5">
+                        <div className="flex items-center gap-2 sm:gap-3">
                           <TeamLogo
+                            className="w-7 h-7 sm:w-9 sm:h-9"
                             logo={
                               teamLogos[team.teamName] ||
                               team.teamName
@@ -265,24 +282,24 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                             }
                             name={team.teamName}
                           />
-                          <span className="text-white font-medium text-sm md:text-base">
+                          <span className="text-white font-semibold text-xs sm:text-sm md:text-base truncate max-w-[130px] sm:max-w-[200px]">
                             {team.teamName}
                           </span>
                         </div>
                       </td>
-                      <td className="p-3 md:p-4 text-center text-green-400 font-semibold text-sm md:text-base">
+                      <td className="py-3 px-2.5 sm:px-3 text-center text-emerald-400 font-bold text-xs sm:text-sm md:text-base whitespace-nowrap">
                         {formatCurrency(team.totalSpent)}
                       </td>
-                      <td className="p-3 md:p-4 text-center text-blue-400 font-semibold text-sm md:text-base">
+                      <td className="py-3 px-2.5 sm:px-3 text-center text-cyan-400 font-bold text-xs sm:text-sm md:text-base whitespace-nowrap">
                         {formatCurrency(team.fundsRemaining)}
                       </td>
-                      <td className="p-3 md:p-4 text-center text-white font-medium text-sm md:text-base">
+                      <td className="py-3 px-2 sm:px-3 text-center text-slate-200 font-semibold text-xs sm:text-sm md:text-base">
                         {team.playersCount}
                       </td>
-                      <td className="p-3 md:p-4 text-center text-purple-400 font-medium text-sm md:text-base">
+                      <td className="py-3 px-2 sm:px-3 text-center text-purple-300 font-semibold text-xs sm:text-sm md:text-base">
                         {team.overseasCount}
                       </td>
-                      <td className="p-3 md:p-4 text-center text-yellow-400 font-semibold text-sm md:text-base">
+                      <td className="py-3 px-2.5 sm:px-3.5 text-center text-amber-300 font-extrabold text-xs sm:text-sm md:text-base">
                         {team.totalPoints}
                       </td>
                     </tr>

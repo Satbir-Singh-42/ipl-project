@@ -219,29 +219,36 @@ export const PlayerTable: React.FC<PlayerTableProps> = ({
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: "easeOut" }}>
-      <Card className="w-full bg-[#0f1629] border-[#1a2332]">
-        <CardHeader className="p-4 md:p-6">
-          <CardTitle className="text-wwwiplt-2-0comwhite text-lg md:text-xl font-bold">
-            {title} ({sortedPlayers.length})
-          </CardTitle>
+      transition={{ duration: 0.5, ease: "easeOut" }}
+      className="w-full"
+    >
+      <Card className="w-full bg-[#0f1629] border border-white/10 rounded-2xl overflow-hidden shadow-2xl backdrop-blur-xl">
+        <CardHeader className="p-3.5 sm:p-5 md:p-6 border-b border-white/10 bg-[#18184a]/60">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <CardTitle className="text-white text-base sm:text-lg md:text-xl font-bold font-['Work_Sans',sans-serif] flex items-center justify-between">
+              <span>{title}</span>
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 sm:ml-3">
+                {sortedPlayers.length} Players
+              </span>
+            </CardTitle>
+          </div>
 
           {/* Search Box */}
-          <div className="mt-4 relative">
+          <div className="mt-3 relative">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-cyan-400 w-4 h-4" />
               <Input
                 type="text"
-                placeholder="Search players by name, role, nation, team, age, or points..."
+                placeholder="Search by name, role, nation, team, age..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 bg-[#1a2332] border-[#2a3441] text-white placeholder:text-gray-400 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                className="pl-9 pr-8 py-2 text-xs sm:text-sm bg-black/40 border-white/15 text-white placeholder:text-white/40 focus:ring-2 focus:ring-[#00bcd4] focus:border-[#00bcd4] rounded-xl"
               />
             </div>
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors">
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-white/50 hover:text-white transition-colors text-xs p-1">
                 ✕
               </button>
             )}
@@ -250,24 +257,30 @@ export const PlayerTable: React.FC<PlayerTableProps> = ({
 
         {/* Team Filter */}
         {showTeamFilter && teams.length > 0 && (
-          <div className="px-4 md:px-6 pb-4">
-            <div className="flex items-center gap-2 md:gap-3 overflow-x-auto scrollbar-hide">
+          <div className="px-3.5 sm:px-5 md:px-6 py-3 border-b border-white/5 bg-black/20">
+            <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide py-0.5">
               <Button
                 variant={selectedTeamFilter === null ? "default" : "outline"}
                 size="sm"
                 onClick={() => handleTeamFilter(null)}
-                className="whitespace-nowrap">
+                className={`h-7 px-3 text-xs rounded-full font-semibold transition-all whitespace-nowrap ${
+                  selectedTeamFilter === null
+                    ? "bg-[#fe6804] text-white hover:bg-[#fe6804]/90 shadow-sm"
+                    : "bg-white/5 border-white/10 text-white/80 hover:bg-white/10"
+                }`}>
                 All Teams
               </Button>
               {teams.map((team) => (
                 <Button
                   key={team.id}
-                  variant={
-                    selectedTeamFilter === team.id ? "default" : "outline"
-                  }
+                  variant={selectedTeamFilter === team.id ? "default" : "outline"}
                   size="sm"
                   onClick={() => handleTeamFilter(team.id)}
-                  className="whitespace-nowrap">
+                  className={`h-7 px-3 text-xs rounded-full font-semibold transition-all whitespace-nowrap ${
+                    selectedTeamFilter === team.id
+                      ? "bg-[#00bcd4] text-black font-bold hover:bg-[#00bcd4]/90 shadow-sm"
+                      : "bg-white/5 border-white/10 text-white/80 hover:bg-white/10"
+                  }`}>
                   {team.name}
                 </Button>
               ))}
@@ -276,69 +289,69 @@ export const PlayerTable: React.FC<PlayerTableProps> = ({
         )}
 
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
+          <div className="w-full overflow-x-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
             <div className="max-h-[70vh] overflow-y-auto">
-              <table className="w-full min-w-[700px]">
-                <thead className="sticky top-0 bg-[#0a1120] border-b border-[#1a2332]">
+              <table className="w-full min-w-[600px] text-left border-collapse">
+                <thead className="sticky top-0 bg-[#18184a] border-b border-white/10 text-slate-300 text-xs sm:text-sm font-semibold z-10">
                   <tr>
-                    <th className="text-left p-3 md:p-4">
-                      <span className="text-white font-semibold">Sr. No.</span>
+                    <th className="py-3 px-2 sm:px-3 text-center w-12 sm:w-14">
+                      <span>#</span>
                     </th>
-                    <th className="text-left p-3 md:p-4">
+                    <th className="py-3 px-2.5 sm:px-3.5 text-left min-w-[140px]">
                       <button
                         onClick={() => handleSort("name")}
-                        className="flex items-center text-white font-semibold hover:text-orange-300 transition-colors">
-                        Player Name
+                        className="flex items-center text-slate-200 font-semibold hover:text-[#00bcd4] transition-colors">
+                        Player
                         {getSortIcon("name")}
                       </button>
                     </th>
-                    <th className="text-left p-3 md:p-4">
+                    <th className="py-3 px-2 sm:px-3 text-left">
                       <button
                         onClick={() => handleSort("role")}
-                        className="flex items-center text-white font-semibold hover:text-orange-300 transition-colors">
+                        className="flex items-center text-slate-200 font-semibold hover:text-[#00bcd4] transition-colors">
                         Role
                         {getSortIcon("role")}
                       </button>
                     </th>
-                    <th className="text-left p-3 md:p-4">
+                    <th className="py-3 px-2 sm:px-3 text-left">
                       <button
                         onClick={() => handleSort("nation")}
-                        className="flex items-center text-white font-semibold hover:text-orange-300 transition-colors">
+                        className="flex items-center text-slate-200 font-semibold hover:text-[#00bcd4] transition-colors">
                         Nation
                         {getSortIcon("nation")}
                       </button>
                     </th>
-                    <th className="text-center p-3 md:p-4">
+                    <th className="py-3 px-2 sm:px-3 text-center w-12 sm:w-16">
                       <button
                         onClick={() => handleSort("age")}
-                        className="flex items-center text-white font-semibold hover:text-orange-300 transition-colors">
+                        className="flex items-center justify-center text-slate-200 font-semibold hover:text-[#00bcd4] transition-colors">
                         Age
                         {getSortIcon("age")}
                       </button>
                     </th>
-                    <th className="text-left p-3 md:p-4">
+                    <th className="py-3 px-2.5 sm:px-3.5 text-left">
                       <button
                         onClick={() => handleSort("basePrice")}
-                        className="flex items-center text-white font-semibold hover:text-orange-300 transition-colors">
-                        Base Price
+                        className="flex items-center text-slate-200 font-semibold hover:text-[#00bcd4] transition-colors whitespace-nowrap">
+                        <span className="hidden sm:inline">Base </span>Price
                         {getSortIcon("basePrice")}
                       </button>
                     </th>
                     {showFinalBidPrice && (
-                      <th className="text-left p-3 md:p-4">
+                      <th className="py-3 px-2.5 sm:px-3.5 text-left">
                         <button
                           onClick={() => handleSort("soldPrice")}
-                          className="flex items-center text-white font-semibold hover:text-orange-300 transition-colors">
-                          Final Bid Price
+                          className="flex items-center text-slate-200 font-semibold hover:text-[#00bcd4] transition-colors whitespace-nowrap">
+                          <span className="hidden sm:inline">Final </span>Price
                           {getSortIcon("soldPrice")}
                         </button>
                       </th>
                     )}
                     {showPoints && (
-                      <th className="text-center p-3 md:p-4">
+                      <th className="py-3 px-2 sm:px-3 text-center w-14 sm:w-20">
                         <button
                           onClick={() => handleSort("points")}
-                          className="flex items-center text-white font-semibold hover:text-orange-300 transition-colors">
+                          className="flex items-center justify-center text-slate-200 font-semibold hover:text-[#00bcd4] transition-colors">
                           Points
                           {getSortIcon("points")}
                         </button>
@@ -346,14 +359,14 @@ export const PlayerTable: React.FC<PlayerTableProps> = ({
                     )}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-white/5">
                   {sortedPlayers.length === 0 ? (
                     <tr>
                       <td
                         colSpan={
                           6 + (showFinalBidPrice ? 1 : 0) + (showPoints ? 1 : 0)
                         }
-                        className="text-center py-8 text-gray-400">
+                        className="text-center py-12 text-slate-400 text-sm">
                         No players found
                       </td>
                     </tr>
@@ -361,38 +374,31 @@ export const PlayerTable: React.FC<PlayerTableProps> = ({
                     sortedPlayers.map((player, index) => (
                       <tr
                         key={player.name + "-" + player.originalIndex}
-                        className={`border-b border-[#1a2332] ${
-                          index % 2 === 0 ? "bg-[#0f1629]" : "bg-[#1a2332]"
+                        className={`hover:bg-white/[0.06] transition-colors ${
+                          index % 2 === 0 ? "bg-[#0f1629]/80" : "bg-[#141b33]/80"
                         }`}>
-                        <td className="p-3 md:p-4 text-gray-300 font-medium">
+                        <td className="py-2.5 px-2 sm:px-3 text-center text-slate-400 font-medium text-xs">
                           {index + 1}
                         </td>
-                        <td className="p-3 md:p-4">
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-300 font-medium text-sm md:text-base">
+                        <td className="py-2.5 px-2.5 sm:px-3.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-white font-semibold text-xs sm:text-sm truncate max-w-[130px] sm:max-w-[180px]">
                               {player.name}
                             </span>
                             {player.overseas && (
-                              <svg
-                                className="w-4 h-4 text-blue-600"
-                                fill="currentColor"
-                                viewBox="0 0 20 20">
-                                <path
-                                  fillRule="evenodd"
-                                  d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
+                              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 border border-blue-400/30 shrink-0">
+                                OS
+                              </span>
                             )}
                           </div>
-                          {showTeam && player.team && (
-                            <div className="text-gray-500 text-xs mt-1">
+                          {showTeam && player.team && player.team !== "N/A" && (
+                            <div className="text-cyan-400/90 font-medium text-[11px] mt-0.5 truncate max-w-[140px]">
                               {player.team}
                             </div>
                           )}
                         </td>
-                        <td className="p-3 md:p-4 text-gray-300 text-sm font-medium">
-                          <Badge variant="secondary" className="text-xs">
+                        <td className="py-2.5 px-2 sm:px-3 text-slate-300 text-xs">
+                          <Badge variant="secondary" className="text-[10px] sm:text-xs px-2 py-0.5 bg-white/10 text-slate-200 border border-white/15">
                             {player.role === "Wicket Keeper"
                               ? "WK"
                               : player.role === "All Rounder"
@@ -410,28 +416,30 @@ export const PlayerTable: React.FC<PlayerTableProps> = ({
                                           : player.role}
                           </Badge>
                         </td>
-                        <td className="p-3 md:p-4 text-gray-300 text-sm font-medium">
+                        <td className="py-2.5 px-2 sm:px-3 text-slate-300 text-xs truncate max-w-[90px]">
                           {player.nation}
                         </td>
-                        <td className="p-3 md:p-4 text-center text-gray-300 text-sm font-medium">
+                        <td className="py-2.5 px-2 sm:px-3 text-center text-slate-300 text-xs">
                           {player.age || "-"}
                         </td>
-                        <td className="p-3 md:p-4 text-left text-gray-300 text-sm font-medium">
+                        <td className="py-2.5 px-2.5 sm:px-3.5 text-slate-300 text-xs font-medium whitespace-nowrap">
                           {formatCurrency(player.basePrice)}
                         </td>
                         {showFinalBidPrice && (
-                          <td className="p-3 md:p-4 text-left text-gray-300 text-sm font-medium">
+                          <td className="py-2.5 px-2.5 sm:px-3.5 text-xs font-bold whitespace-nowrap">
                             {player.status === "sold" ? (
-                              formatCurrency(player.soldPrice)
+                              <span className="text-emerald-400">
+                                {formatCurrency(player.soldPrice)}
+                              </span>
                             ) : (
-                              <span className="text-red-400 font-medium">
+                              <span className="text-red-400 font-semibold px-1.5 py-0.5 rounded bg-red-500/10 border border-red-500/20">
                                 UNSOLD
                               </span>
                             )}
                           </td>
                         )}
                         {showPoints && (
-                          <td className="p-3 md:p-4 text-center text-gray-300 text-sm font-medium">
+                          <td className="py-2.5 px-2 sm:px-3 text-center text-amber-300 font-bold text-xs">
                             {player.points || "-"}
                           </td>
                         )}

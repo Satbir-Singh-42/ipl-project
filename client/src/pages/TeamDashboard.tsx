@@ -9,12 +9,22 @@ import { useIPLData } from "@/hooks/useIPLData";
 import { LoadingPage } from "@/components/LoadingPage";
 import NotFound from "@/pages/not-found";
 import { supabaseService, type Team } from "@/services/supabaseService";
-import { ArrowLeft, RefreshCw } from "lucide-react";
 import {
-  AUCTION_CONFIG,
-  getConfigText,
-  DASHBOARD_COLORS,
-} from "@shared/config";
+  ArrowLeft,
+  RefreshCw,
+  Swords,
+  Trophy,
+  Coins,
+  TrendingUp,
+  Users,
+  Globe,
+  ShieldCheck,
+  AlertCircle,
+  PieChart,
+  Shield,
+  Sparkles,
+} from "lucide-react";
+import { AUCTION_CONFIG, getConfigText } from "@shared/config";
 import { formatIndianNumber } from "@/lib/utils";
 
 // Team Logo component with hover animation
@@ -32,7 +42,7 @@ const TeamLogo = ({
   if (isImageLogo) {
     return (
       <motion.div
-        className={`w-16 h-16 md:w-20 md:h-20 aspect-square bg-cover bg-center rounded-full flex-shrink-0 ${className}`}
+        className={`w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 aspect-square bg-cover bg-center rounded-2xl flex-shrink-0 shadow-xl border-2 border-white/25 bg-black/40 p-1 ${className}`}
         style={{ backgroundImage: `url(${logo})` }}
         whileHover={{
           scale: 1.05,
@@ -49,7 +59,7 @@ const TeamLogo = ({
     const teamGradient = supabaseService.getTeamGradient(name);
     return (
       <motion.div
-        className={`w-16 h-16 md:w-20 md:h-20 aspect-square flex items-center justify-center rounded-full flex-shrink-0 ${teamGradient} text-white text-lg md:text-xl font-bold ${className}`}
+        className={`w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 aspect-square flex items-center justify-center rounded-2xl flex-shrink-0 ${teamGradient} text-white text-xl sm:text-2xl font-bold shadow-xl border-2 border-white/25 ${className}`}
         whileHover={{
           scale: 1.05,
           rotate: 2,
@@ -68,18 +78,18 @@ const containerVariants = {
   visible: {
     opacity: 1,
     transition: {
-      staggerChildren: 0.1,
+      staggerChildren: 0.08,
     },
   },
 };
 
 const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
+  hidden: { opacity: 0, y: 16 },
   visible: {
     opacity: 1,
     y: 0,
     transition: {
-      duration: 0.5,
+      duration: 0.4,
       ease: "easeOut",
     },
   },
@@ -135,9 +145,10 @@ export const TeamDashboard = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[#0f1629] p-4 md:p-6">
-        <div className="flex items-center justify-center h-96">
-          <div className="text-red-400 text-lg">
+      <div className="min-h-screen bg-[#0f1629] p-4 md:p-6 flex items-center justify-center">
+        <div className="text-center p-8 rounded-2xl bg-[#18184a] border border-red-500/30">
+          <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-3" />
+          <div className="text-red-400 text-lg font-bold">
             Error loading team data: {error.message}
           </div>
         </div>
@@ -148,12 +159,12 @@ export const TeamDashboard = () => {
   const teamStat = teamStats?.find((stat) => stat.teamId === teamConfig.id);
   const teamPlayers = soldPlayers || [];
   const teamGradient = supabaseService.getTeamGradient(teamConfig.name);
-  const teamBorderColor = supabaseService.getTeamBorderColor(
-    teamConfig.name
-  );
-  const startingBudget = teamStat?.startingBudget || 100000;
+  const teamBorderColor = supabaseService.getTeamBorderColor(teamConfig.name);
+  const startingBudget = teamStat?.startingBudget || 10000000;
+  const fundsRemaining = teamStat ? teamStat.fundsRemaining : startingBudget;
+  const totalSpent = teamStat ? teamStat.totalSpent : 0;
 
-  // Player limits from config (easily editable in shared/config.ts)
+  // Player limits from config
   const MAX_PLAYERS = AUCTION_CONFIG.maxPlayers;
   const MAX_OVERSEAS = AUCTION_CONFIG.maxOverseasPlayers;
   const MIN_PLAYERS = AUCTION_CONFIG.minPlayers;
@@ -165,383 +176,347 @@ export const TeamDashboard = () => {
   // Check if limits are exceeded
   const playersExceeded = currentPlayers > MAX_PLAYERS;
   const overseasExceeded = currentOverseas > MAX_OVERSEAS;
+  const isSquadEligible = currentPlayers >= MIN_PLAYERS && !playersExceeded && !overseasExceeded;
+
+  // Spending percentage
+  const spentPercent = startingBudget > 0 ? Math.min(100, Math.round((totalSpent / startingBudget) * 100)) : 0;
+  const remainingPercent = 100 - spentPercent;
 
   return (
     <motion.div
-      className="min-h-screen bg-[#0f1629] p-3 md:p-6"
+      className="min-h-screen bg-[#0f1629] p-3 sm:p-5 md:p-8"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: "easeOut" }}>
-      <div className="max-w-7xl mx-auto space-y-4 md:space-y-6">
-        {/* Header with Back Button and Refresh Button */}
-        <motion.div
-          className="flex items-center justify-between mb-4 md:mb-6"
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.1 }}>
+      <div className="max-w-7xl mx-auto space-y-4 md:space-y-5">
+        
+        {/* Top Action Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Link href="/">
-            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-              <Button
-                data-testid="button-back-overview"
-                variant="outline"
-                size="sm"
-                className="bg-[#1a2332] border-[#2a3441] text-gray-300 hover:bg-[#1a2332] hover:text-gray-300 hover:border-[#2a3441] text-xs md:text-sm transition-all duration-200">
-                <ArrowLeft className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
-                Back to Overview
-              </Button>
-            </motion.div>
+            <Button
+              data-testid="button-back-overview"
+              variant="outline"
+              size="sm"
+              className="bg-[#18184a]/80 border-white/15 text-slate-200 hover:bg-white/10 hover:text-white text-xs sm:text-sm font-semibold rounded-xl px-4 py-2 shadow-sm transition-all flex items-center gap-2">
+              <ArrowLeft className="w-4 h-4 text-[#00bcd4]" />
+              <span>Back to Overview</span>
+            </Button>
           </Link>
-          <div className="flex gap-2">
+
+          <div className="flex items-center gap-2.5">
             <Link href={`/team/${teamId}/playing-xi`}>
-              <motion.div
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}>
-                <Button
-                  data-testid="button-playing-xi"
-                  variant="outline"
-                  size="sm"
-                  className="bg-green-600 border-green-500 text-white hover:bg-green-700 hover:text-white hover:border-green-600 text-xs md:text-sm transition-all duration-200 shadow-lg hover:shadow-green-500/25 min-h-[44px] flex items-center justify-center">
-                  Playing XI
-                </Button>
-              </motion.div>
-            </Link>
-            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
               <Button
-                data-testid="button-refresh-data"
+                data-testid="button-playing-xi"
                 variant="outline"
                 size="sm"
-                className="bg-[#1a2332] border-[#2a3441] text-gray-300 hover:bg-[#1a2332] hover:text-gray-300 hover:border-[#2a3441] text-xs md:text-sm transition-all duration-200 px-2 md:px-3 min-w-[44px] min-h-[44px] flex items-center justify-center"
-                disabled={isRefreshing}
-                aria-label="Refresh Data"
-                onClick={async () => {
-                  setIsRefreshing(true);
-                  try {
-                    supabaseService.clearCache();
-                    refreshAllData();
-                    // Also refresh the team-specific sold players data
-                    if (teamConfig?.id) {
-                      queryClient.invalidateQueries({
-                        queryKey: ["soldPlayers", teamConfig.id],
-                      });
-                    }
-                    queryClient.invalidateQueries({
-                      queryKey: ["unsoldPlayers"],
-                    });
-                    // Wait a moment for the refresh to complete
-                    await new Promise((resolve) => setTimeout(resolve, 1000));
-                  } finally {
-                    setIsRefreshing(false);
-                  }
-                }}>
-                <RefreshCw
-                  className={`w-4 h-4 md:mr-2 transition-all duration-500 ${
-                    isRefreshing ? "animate-spin" : ""
-                  }`}
-                />
-                <span className="hidden md:inline">Refresh Data</span>
+                className="bg-gradient-to-r from-emerald-600 to-green-600 border-none text-white hover:from-emerald-500 hover:to-green-500 text-xs sm:text-sm font-bold rounded-xl px-4 py-2 shadow-lg shadow-green-500/20 transition-all flex items-center gap-2">
+                <Swords className="w-4 h-4" />
+                <span>Playing XI</span>
               </Button>
-            </motion.div>
-          </div>
-        </motion.div>
+            </Link>
 
-        {/* Team Header */}
-        <motion.div
-          variants={itemVariants}
-          initial="hidden"
-          animate="visible"
-          whileHover={{ y: -2 }}
-          transition={{ duration: 0.2 }}>
-          <Card
-            className={`bg-[#0f1629] border-2 ${teamBorderColor} ${teamGradient} bg-opacity-95 transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/10`}>
-            <CardContent className="p-4 md:p-6">
-              <div className="flex flex-col sm:flex-row items-center gap-4 md:gap-6">
-                <TeamLogo logo={teamConfig.logo} name={teamConfig.name} />
-                <div className="text-center sm:text-left flex-1">
-                  <motion.h1
+            <Button
+              data-testid="button-refresh-data"
+              variant="outline"
+              size="sm"
+              className="bg-[#18184a]/80 border-white/15 text-slate-200 hover:bg-white/10 hover:text-white text-xs sm:text-sm font-semibold rounded-xl px-3.5 py-2 shadow-sm transition-all flex items-center gap-2"
+              disabled={isRefreshing}
+              aria-label="Refresh Data"
+              onClick={async () => {
+                setIsRefreshing(true);
+                try {
+                  supabaseService.clearCache();
+                  refreshAllData();
+                  if (teamConfig?.id) {
+                    queryClient.invalidateQueries({
+                      queryKey: ["soldPlayers", teamConfig.id],
+                    });
+                  }
+                  queryClient.invalidateQueries({
+                    queryKey: ["unsoldPlayers"],
+                  });
+                  await new Promise((resolve) => setTimeout(resolve, 1000));
+                } finally {
+                  setIsRefreshing(false);
+                }
+              }}>
+              <RefreshCw
+                className={`w-4 h-4 text-cyan-400 ${
+                  isRefreshing ? "animate-spin" : ""
+                }`}
+              />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
+          </div>
+        </div>
+
+        {/* Team Hero Header */}
+        <Card className="bg-gradient-to-r from-[#18184a]/95 via-[#0f1629]/95 to-[#18184a]/95 border border-white/15 rounded-2xl shadow-xl backdrop-blur-xl overflow-hidden relative">
+          <div className="absolute top-0 right-0 w-80 h-80 bg-[#00bcd4]/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+          <div className="absolute bottom-0 left-0 w-80 h-80 bg-[#fe6804]/10 rounded-full blur-3xl pointer-events-none -ml-20 -mb-20" />
+          
+          <CardContent className="p-4 sm:p-6 relative">
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-5">
+              <TeamLogo logo={teamConfig.logo} name={teamConfig.name} />
+              <div className="text-center sm:text-left flex-1 min-w-0">
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 mb-2">
+                  <h1
                     data-testid="text-team-name"
-                    className="text-xl md:text-3xl font-bold text-white mb-2"
-                    whileHover={{ scale: 1.01 }}
-                    transition={{ duration: 0.2 }}>
+                    className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-white font-['Work_Sans',sans-serif] tracking-tight drop-shadow-md">
                     {teamConfig.name}
-                  </motion.h1>
-                  <div className="text-white/90 space-y-1">
-                    <p className="text-sm md:text-base font-medium">
-                      {getConfigText.squadSize()}
-                    </p>
-                    {/* <p className="text-xs md:text-sm text-yellow-300 font-medium">
-                      {getConfigText.qualification()}
-                    </p> */}
+                  </h1>
+                  {teamRank && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 font-bold text-xs shadow-sm">
+                      <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Rank #{teamRank}</span>
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
+                  <span className="px-3 py-1 rounded-lg bg-white/10 border border-white/15 text-xs font-semibold text-slate-200">
+                    Squad: <span className="text-white font-bold">{currentPlayers}/{MAX_PLAYERS}</span>
+                  </span>
+                  <span className="px-3 py-1 rounded-lg bg-blue-500/15 border border-blue-400/30 text-xs font-semibold text-blue-300">
+                    Overseas: <span className="text-white font-bold">{currentOverseas}/{MAX_OVERSEAS}</span>
+                  </span>
+                  <span className={`px-3 py-1 rounded-lg text-xs font-bold border ${
+                    isSquadEligible
+                      ? "bg-emerald-500/15 border-emerald-400/30 text-emerald-300"
+                      : "bg-orange-500/15 border-orange-400/30 text-orange-300"
+                  }`}>
+                    {isSquadEligible ? "Squad Eligible" : `Need ${Math.max(0, MIN_PLAYERS - currentPlayers)} More`}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Hero Budget Card with Visualizer */}
+        <Card className="bg-gradient-to-br from-[#18184a]/90 via-[#0f1629]/95 to-[#18184a]/90 border border-white/15 rounded-2xl shadow-xl backdrop-blur-xl overflow-hidden relative">
+          <CardContent className="p-4 sm:p-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-center">
+              
+              {/* Left: Big Remaining Budget */}
+              <div className="lg:col-span-2 space-y-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center">
+                    <Coins className="w-4 h-4 text-cyan-400" />
+                  </div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-cyan-400 font-['Work_Sans',sans-serif]">
+                    Remaining Auction Purse
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-baseline gap-3">
+                  <p
+                    data-testid="text-remaining-budget"
+                    className="text-3xl sm:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-blue-200 to-white font-['Work_Sans',sans-serif] tracking-tight">
+                    ₹{formatIndianNumber(fundsRemaining)}
+                  </p>
+                  <span className="text-xs sm:text-sm font-medium text-slate-400">
+                    of ₹{formatIndianNumber(startingBudget)} total
+                  </span>
+                </div>
+
+                {/* Spending Progress Bar */}
+                <div className="space-y-1 pt-1">
+                  <div className="flex justify-between text-xs text-slate-300 font-semibold">
+                    <span>Spent: <span className="text-emerald-400 font-bold">₹{formatIndianNumber(totalSpent)}</span> ({spentPercent}%)</span>
+                    <span>Purse Left: <span className="text-cyan-300 font-bold">{remainingPercent}%</span></span>
+                  </div>
+                  <div className="w-full h-2.5 rounded-full bg-black/50 border border-white/10 overflow-hidden p-0.5">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-[#00bcd4] to-cyan-400 transition-all duration-500"
+                      style={{ width: `${Math.max(4, spentPercent)}%` }}
+                    />
                   </div>
                 </div>
               </div>
+
+              {/* Right: Quick Budget Breakdown Box */}
+              <div className="bg-black/40 border border-white/10 rounded-xl p-3.5 space-y-2.5 shadow-inner">
+                <div className="flex justify-between items-center text-xs sm:text-sm border-b border-white/5 pb-1.5">
+                  <span className="text-slate-400 font-medium">Starting Purse</span>
+                  <span className="text-white font-bold">₹{formatIndianNumber(startingBudget)}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs sm:text-sm border-b border-white/5 pb-1.5">
+                  <span className="text-slate-400 font-medium">Total Spent</span>
+                  <span className="text-emerald-400 font-bold">₹{formatIndianNumber(totalSpent)}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs sm:text-sm">
+                  <span className="text-slate-400 font-medium">Available</span>
+                  <span className="text-cyan-300 font-extrabold">₹{formatIndianNumber(fundsRemaining)}</span>
+                </div>
+              </div>
+
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 6 Key Metrics Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+          
+          {/* Card 1: Current Rank */}
+          <Card className="bg-gradient-to-br from-[#18184a]/90 to-[#0f1629]/95 border border-white/10 hover:border-amber-400/40 rounded-2xl shadow-lg transition-all duration-300 backdrop-blur-xl h-full">
+            <CardContent className="p-3.5 sm:p-4">
+              <div className="flex items-center gap-2.5 mb-1.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-400/40 flex items-center justify-center shrink-0">
+                  <Trophy className="w-4 h-4 text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Standing</p>
+                  <p className="text-xs font-semibold text-slate-200">Current Rank</p>
+                </div>
+              </div>
+              <p
+                data-testid="text-current-rank"
+                className="text-xl sm:text-2xl font-extrabold text-amber-300 font-['Work_Sans',sans-serif] mt-1">
+                {teamRank ? `#${teamRank}` : "--"}
+              </p>
             </CardContent>
           </Card>
-        </motion.div>
 
-        {/* Team Statistics */}
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-          className="space-y-4 md:space-y-6">
-          {/* Remaining Budget - Full Width */}
-          <motion.div variants={itemVariants}>
-            <Card
-              className={`${DASHBOARD_COLORS.card.background} ${DASHBOARD_COLORS.stats.remainingBudget.border} ${DASHBOARD_COLORS.stats.remainingBudget.borderHover} transition-all duration-300 hover:scale-[1.02] hover:shadow-lg`}>
-              <CardContent className="p-4 md:p-6">
-                <div className="text-center space-y-2">
-                  <p
-                    className={`${DASHBOARD_COLORS.text.label} text-sm md:text-base`}>
-                    Remaining Budget
-                  </p>
-                  <motion.p
-                    data-testid="text-remaining-budget"
-                    className={`text-2xl md:text-4xl font-bold ${DASHBOARD_COLORS.stats.remainingBudget.text}`}
-                    whileHover={{ scale: 1.05 }}
-                    transition={{ duration: 0.2 }}>
-                    {teamStat
-                      ? `₹${formatIndianNumber(teamStat.fundsRemaining)}`
-                      : `₹${formatIndianNumber(startingBudget)}`}
-                  </motion.p>
+          {/* Card 2: Starting Budget */}
+          <Card className="bg-gradient-to-br from-[#18184a]/90 to-[#0f1629]/95 border border-white/10 hover:border-blue-400/40 rounded-2xl shadow-lg transition-all duration-300 backdrop-blur-xl h-full">
+            <CardContent className="p-3.5 sm:p-4">
+              <div className="flex items-center gap-2.5 mb-1.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-500/20 border border-blue-400/40 flex items-center justify-center shrink-0">
+                  <Coins className="w-4 h-4 text-blue-400" />
                 </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Initial Purse</p>
+                  <p className="text-xs font-semibold text-slate-200">Starting Budget</p>
+                </div>
+              </div>
+              <p
+                data-testid="text-starting-budget"
+                className="text-lg sm:text-xl font-extrabold text-white font-['Work_Sans',sans-serif] mt-1 truncate">
+                ₹{formatIndianNumber(startingBudget)}
+              </p>
+            </CardContent>
+          </Card>
 
-          {/* All Stats - Combined Grid: 2 columns on mobile, 3 on desktop */}
-          <motion.div
-            className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4"
-            variants={containerVariants}>
-            {/* Current Rank */}
-            <motion.div variants={itemVariants}>
-              <Card
-                className={`${DASHBOARD_COLORS.card.background} ${DASHBOARD_COLORS.stats.currentRank.border} ${DASHBOARD_COLORS.stats.currentRank.borderHover} transition-all duration-300 hover:scale-[1.02] hover:shadow-md`}>
-                <CardContent className="p-3 md:p-4">
-                  <div className="text-center space-y-2">
-                    <p
-                      className={`${DASHBOARD_COLORS.text.label} text-xs md:text-sm`}>
-                      Current Rank
-                    </p>
-                    <motion.p
-                      data-testid="text-current-rank"
-                      className={`text-lg md:text-2xl font-bold ${DASHBOARD_COLORS.stats.currentRank.text}`}
-                      whileHover={{ scale: 1.1 }}
-                      transition={{ duration: 0.2 }}>
-                      {teamRank ? `#${teamRank}` : "--"}
-                    </motion.p>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
+          {/* Card 3: Total Spent */}
+          <Card className="bg-gradient-to-br from-[#18184a]/90 to-[#0f1629]/95 border border-white/10 hover:border-emerald-400/40 rounded-2xl shadow-lg transition-all duration-300 backdrop-blur-xl h-full">
+            <CardContent className="p-3.5 sm:p-4">
+              <div className="flex items-center gap-2.5 mb-1.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center shrink-0">
+                  <TrendingUp className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Expenditure</p>
+                  <p className="text-xs font-semibold text-slate-200">Total Spent</p>
+                </div>
+              </div>
+              <p
+                data-testid="text-total-spent"
+                className="text-lg sm:text-xl font-extrabold text-emerald-400 font-['Work_Sans',sans-serif] mt-1 truncate">
+                ₹{formatIndianNumber(totalSpent)}
+              </p>
+            </CardContent>
+          </Card>
 
-            {/* Starting Budget */}
-            <motion.div variants={itemVariants}>
-              <Card
-                className={`${DASHBOARD_COLORS.card.background} ${DASHBOARD_COLORS.stats.startingBudget.border} ${DASHBOARD_COLORS.stats.startingBudget.borderHover} transition-all duration-300 hover:scale-[1.02] hover:shadow-md`}>
-                <CardContent className="p-3 md:p-4">
-                  <div className="text-center space-y-2">
-                    <p
-                      className={`${DASHBOARD_COLORS.text.label} text-xs md:text-sm`}>
-                      Starting Budget
-                    </p>
-                    <motion.p
-                      data-testid="text-starting-budget"
-                      className={`text-lg md:text-2xl font-bold ${DASHBOARD_COLORS.stats.startingBudget.text}`}
-                      whileHover={{ scale: 1.1 }}
-                      transition={{ duration: 0.2 }}>
-                      ₹{formatIndianNumber(startingBudget)}
-                    </motion.p>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
+          {/* Card 4: Total Players */}
+          <Card className={`bg-gradient-to-br from-[#18184a]/90 to-[#0f1629]/95 border rounded-2xl shadow-lg transition-all duration-300 backdrop-blur-xl h-full ${
+            playersExceeded ? "border-red-500/50" : "border-white/10 hover:border-purple-400/40"
+          }`}>
+            <CardContent className="p-3.5 sm:p-4">
+              <div className="flex items-center gap-2.5 mb-1.5">
+                <div className="w-8 h-8 rounded-lg bg-purple-500/20 border border-purple-400/40 flex items-center justify-center shrink-0">
+                  <Users className="w-4 h-4 text-purple-400" />
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Roster Size</p>
+                  <p className="text-xs font-semibold text-slate-200">Total Players</p>
+                </div>
+              </div>
+              <div className="flex items-baseline gap-2 mt-1">
+                <p
+                  data-testid="text-total-players"
+                  className="text-xl sm:text-2xl font-extrabold text-white font-['Work_Sans',sans-serif]">
+                  {currentPlayers}
+                </p>
+                <span className="text-xs font-semibold text-slate-400">/ {MAX_PLAYERS} Max</span>
+              </div>
+              <p className="text-[11px] text-slate-300 mt-1">
+                {currentPlayers < MIN_PLAYERS
+                  ? `Need ${MIN_PLAYERS - currentPlayers} more for minimum`
+                  : `Can add ${MAX_PLAYERS - currentPlayers} more`}
+              </p>
+            </CardContent>
+          </Card>
 
-            {/* Total Spent */}
-            <motion.div variants={itemVariants}>
-              <Card
-                className={`${DASHBOARD_COLORS.card.background} ${DASHBOARD_COLORS.stats.totalSpent.border} ${DASHBOARD_COLORS.stats.totalSpent.borderHover} transition-all duration-300 hover:scale-[1.02] hover:shadow-md`}>
-                <CardContent className="p-3 md:p-4">
-                  <div className="text-center space-y-2">
-                    <p
-                      className={`${DASHBOARD_COLORS.text.label} text-xs md:text-sm`}>
-                      Total Spent
-                    </p>
-                    <motion.p
-                      data-testid="text-total-spent"
-                      className={`text-lg md:text-2xl font-bold ${DASHBOARD_COLORS.stats.totalSpent.text}`}
-                      whileHover={{ scale: 1.1 }}
-                      transition={{ duration: 0.2 }}>
-                      {teamStat
-                        ? `₹${formatIndianNumber(teamStat.totalSpent)}`
-                        : "₹0"}
-                    </motion.p>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
+          {/* Card 5: Foreign Players */}
+          <Card className={`bg-gradient-to-br from-[#18184a]/90 to-[#0f1629]/95 border rounded-2xl shadow-lg transition-all duration-300 backdrop-blur-xl h-full ${
+            overseasExceeded ? "border-red-500/50" : "border-white/10 hover:border-cyan-400/40"
+          }`}>
+            <CardContent className="p-3.5 sm:p-4">
+              <div className="flex items-center gap-2.5 mb-1.5">
+                <div className="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center shrink-0">
+                  <Globe className="w-4 h-4 text-cyan-400" />
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Overseas</p>
+                  <p className="text-xs font-semibold text-slate-200">Foreign Quota</p>
+                </div>
+              </div>
+              <div className="flex items-baseline gap-2 mt-1">
+                <p
+                  data-testid="text-foreign-players"
+                  className="text-xl sm:text-2xl font-extrabold text-cyan-300 font-['Work_Sans',sans-serif]">
+                  {currentOverseas}
+                </p>
+                <span className="text-xs font-semibold text-slate-400">/ {MAX_OVERSEAS} Max</span>
+              </div>
+              <p className="text-[11px] text-slate-300 mt-1">
+                {currentOverseas >= MAX_OVERSEAS
+                  ? "Foreign quota full"
+                  : `Can add ${MAX_OVERSEAS - currentOverseas} more`}
+              </p>
+            </CardContent>
+          </Card>
 
-            <motion.div variants={itemVariants}>
-              <Card
-                className={`${DASHBOARD_COLORS.card.background} ${
-                  DASHBOARD_COLORS.card.border
-                } ${
-                  DASHBOARD_COLORS.card.borderHover
-                } transition-all duration-300 hover:scale-[1.02] hover:shadow-md ${
-                  playersExceeded ? DASHBOARD_COLORS.status.exceeded : ""
+          {/* Card 6: Squad Status */}
+          <Card className={`bg-gradient-to-br from-[#18184a]/90 to-[#0f1629]/95 border rounded-2xl shadow-lg transition-all duration-300 backdrop-blur-xl h-full ${
+            isSquadEligible
+              ? "border-emerald-500/40 hover:border-emerald-400"
+              : "border-orange-500/40 hover:border-orange-400"
+          }`}>
+            <CardContent className="p-3.5 sm:p-4">
+              <div className="flex items-center gap-2.5 mb-1.5">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                  isSquadEligible ? "bg-emerald-500/20 border border-emerald-400/40 text-emerald-400" : "bg-orange-500/20 border border-orange-400/40 text-orange-400"
                 }`}>
-                <CardContent className="p-3 md:p-4">
-                  <div className="text-center space-y-2">
-                    <p
-                      className={`${DASHBOARD_COLORS.text.label} text-xs md:text-sm`}>
-                      Total Players
-                    </p>
-                    <motion.p
-                      data-testid="text-total-players"
-                      className={`text-xl md:text-2xl font-bold ${
-                        playersExceeded
-                          ? DASHBOARD_COLORS.text.error
-                          : DASHBOARD_COLORS.text.primary
-                      }`}
-                      whileHover={{ scale: 1.1 }}
-                      transition={{ duration: 0.2 }}>
-                      {currentPlayers}/{MAX_PLAYERS}
-                    </motion.p>
-                    {playersExceeded ? (
-                      <motion.p
-                        className={`text-xs ${DASHBOARD_COLORS.text.error} font-semibold`}
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.3 }}>
-                        Limit exceeded!
-                      </motion.p>
-                    ) : currentPlayers === MAX_PLAYERS ? (
-                      <p className={`text-xs ${DASHBOARD_COLORS.text.success}`}>
-                        Squad full
-                      </p>
-                    ) : (
-                      <p className={`text-xs ${DASHBOARD_COLORS.text.info}`}>
-                        {currentPlayers < MIN_PLAYERS
-                          ? `Need ${
-                              MIN_PLAYERS - currentPlayers
-                            } more for eligibility`
-                          : `Can add ${MAX_PLAYERS - currentPlayers} more`}
-                      </p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            <motion.div variants={itemVariants}>
-              <Card
-                className={`${DASHBOARD_COLORS.card.background} ${
-                  DASHBOARD_COLORS.card.border
-                } ${
-                  DASHBOARD_COLORS.card.borderHover
-                } transition-all duration-300 hover:scale-[1.02] hover:shadow-md ${
-                  overseasExceeded ? DASHBOARD_COLORS.status.exceeded : ""
+                  {isSquadEligible ? <ShieldCheck className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Validation</p>
+                  <p className="text-xs font-semibold text-slate-200">Squad Status</p>
+                </div>
+              </div>
+              <p
+                data-testid="text-squad-status"
+                className={`text-lg sm:text-xl font-extrabold font-['Work_Sans',sans-serif] mt-1 ${
+                  isSquadEligible ? "text-emerald-400" : "text-orange-400"
                 }`}>
-                <CardContent className="p-3 md:p-4">
-                  <div className="text-center space-y-2">
-                    <p
-                      className={`${DASHBOARD_COLORS.text.label} text-xs md:text-sm`}>
-                      Foreign Players
-                    </p>
-                    <motion.p
-                      data-testid="text-foreign-players"
-                      className={`text-xl md:text-2xl font-bold ${
-                        overseasExceeded
-                          ? DASHBOARD_COLORS.text.error
-                          : DASHBOARD_COLORS.text.primary
-                      }`}
-                      whileHover={{ scale: 1.1 }}
-                      transition={{ duration: 0.2 }}>
-                      {currentOverseas}/{MAX_OVERSEAS}
-                    </motion.p>
-                    {overseasExceeded ? (
-                      <motion.p
-                        className={`text-xs ${DASHBOARD_COLORS.text.error} font-semibold`}
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.3 }}>
-                        Limit exceeded!
-                      </motion.p>
-                    ) : currentOverseas >= MAX_OVERSEAS ||
-                      currentPlayers >= MAX_PLAYERS ? (
-                      <p className={`text-xs ${DASHBOARD_COLORS.text.success}`}>
-                        {currentOverseas >= MAX_OVERSEAS
-                          ? "Foreign quota full"
-                          : "Squad full"}
-                      </p>
-                    ) : (
-                      <p className={`text-xs ${DASHBOARD_COLORS.text.info}`}>
-                        Can add{" "}
-                        {Math.min(
-                          MAX_OVERSEAS - currentOverseas,
-                          MAX_PLAYERS - currentPlayers
-                        )}{" "}
-                        more
-                      </p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
+                {isSquadEligible ? "Eligible" : "Incomplete"}
+              </p>
+              <p className="text-[11px] text-slate-300 mt-1">
+                {isSquadEligible ? "Squad meets criteria" : `Min: ${MIN_PLAYERS} players required`}
+              </p>
+            </CardContent>
+          </Card>
 
-            <motion.div variants={itemVariants}>
-              <Card
-                className={`${DASHBOARD_COLORS.card.background} ${
-                  DASHBOARD_COLORS.card.border
-                } ${
-                  DASHBOARD_COLORS.card.borderHover
-                } transition-all duration-300 hover:scale-[1.02] hover:shadow-md ${
-                  currentPlayers >= MIN_PLAYERS
-                    ? DASHBOARD_COLORS.status.eligible
-                    : DASHBOARD_COLORS.status.notEligible
-                }`}>
-                <CardContent className="p-3 md:p-4">
-                  <div className="text-center space-y-2">
-                    <p
-                      className={`${DASHBOARD_COLORS.text.label} text-xs md:text-sm`}>
-                      Squad Status
-                    </p>
-                    <motion.p
-                      data-testid="text-squad-status"
-                      className={`text-lg md:text-xl font-bold ${
-                        currentPlayers >= MIN_PLAYERS
-                          ? DASHBOARD_COLORS.text.success
-                          : DASHBOARD_COLORS.text.error
-                      }`}
-                      whileHover={{ scale: 1.1 }}
-                      transition={{ duration: 0.2 }}>
-                      {currentPlayers >= MIN_PLAYERS
-                        ? "Eligible"
-                        : "Not Eligible"}
-                    </motion.p>
-                    <p className={`text-xs ${DASHBOARD_COLORS.text.info}`}>
-                      {getConfigText.minPlayers()}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </motion.div>
-        </motion.div>
+        </div>
 
-        {/* Players Table */}
-        <motion.div
-          className="space-y-4"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.3 }}>
+        {/* Squad Player Cards */}
+        <div className="space-y-4 pt-1">
           {loadingPlayers ? (
-            <Card
-              className={`${DASHBOARD_COLORS.card.background} ${DASHBOARD_COLORS.card.border}`}>
-              <CardContent className="p-6">
-                <div className={`text-center ${DASHBOARD_COLORS.text.label}`}>
-                  Loading team players...
-                </div>
-              </CardContent>
+            <Card className="bg-[#18184a]/70 border border-white/10 rounded-2xl p-6 text-center text-slate-400">
+              <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-cyan-400" />
+              <p className="text-sm">Loading squad players...</p>
             </Card>
           ) : (
             <PlayerCards
@@ -549,7 +524,8 @@ export const TeamDashboard = () => {
               title={`${teamConfig.name} Squad (${teamPlayers.length} players)`}
             />
           )}
-        </motion.div>
+        </div>
+
       </div>
     </motion.div>
   );

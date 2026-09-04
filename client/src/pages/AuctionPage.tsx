@@ -122,8 +122,15 @@ export default function AuctionPage() {
   useEffect(() => {
     const initAuctionPlayers = async () => {
       if (players && players.length > 0) {
-        // Fetch players that were ACTUALLY marked unsold during an auction session
-        const actualUnsoldNames = await supabaseService.getUnsoldPlayerNames();
+        // Fetch pools and unsold names together so sequencing is immediate
+        const [latestPools, actualUnsoldNames] = await Promise.all([
+          pools.length > 0 ? Promise.resolve(pools) : supabaseService.getPools().catch(() => []),
+          supabaseService.getUnsoldPlayerNames(),
+        ]);
+
+        if (pools.length === 0 && latestPools.length > 0) {
+          setPools(latestPools);
+        }
         setUnsoldPlayerNames(actualUnsoldNames);
 
         // Build active/sold from fresh data, applying unsold flags
@@ -132,7 +139,7 @@ export default function AuctionPage() {
         const sheetSoldNames = new Set<string>();
 
         players.forEach((player) => {
-          const isMarkedUnsold = actualUnsoldNames.has(player.name);
+          const isMarkedUnsold = actualUnsoldNames.has(player.name) || player.status === "unsold";
           const playerWithUnsold = { ...player, isUnsold: isMarkedUnsold };
 
           if (player.status === "sold" && (player.soldPrice || 0) > 0) {
@@ -143,15 +150,19 @@ export default function AuctionPage() {
           }
         });
 
-        // Sort active players according to pools sequence and auctionOrder
+        // Sort active players strictly according to pool order and auctionOrder
+        const activePools = latestPools.length > 0 ? latestPools : pools;
         const poolOrderMap = new Map<number, number>();
-        pools.forEach((p, idx) => poolOrderMap.set(p.id, p.orderIndex ?? idx));
+        activePools.forEach((p, idx) => poolOrderMap.set(p.id, p.orderIndex ?? idx + 1));
 
         active.sort((a, b) => {
           const orderA = a.poolId ? poolOrderMap.get(a.poolId) ?? 9999 : 99999;
           const orderB = b.poolId ? poolOrderMap.get(b.poolId) ?? 9999 : 99999;
           if (orderA !== orderB) return orderA - orderB;
-          return (a.auctionOrder || 0) - (b.auctionOrder || 0);
+          const seqA = a.auctionOrder ?? 0;
+          const seqB = b.auctionOrder ?? 0;
+          if (seqA !== seqB) return seqA - seqB;
+          return (a.dbId ?? 0) - (b.dbId ?? 0);
         });
 
         setActiveCards(active);
@@ -288,10 +299,6 @@ export default function AuctionPage() {
         selectedTeam,
         finalPrice,
       );
-      toast({
-        title: "Player Sold",
-        description: `${currentPlayer.name} sold to ${selectedTeam} for ₹${formatIndianNumber(finalPrice)}.`,
-      });
       refetchTeams();
       refetchPlayers();
     } catch (err) {

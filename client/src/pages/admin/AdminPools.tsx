@@ -195,6 +195,7 @@ export function AdminPools() {
       variant: "warning",
       onConfirm: async () => {
         setIsProcessing(true);
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
         try {
           const res = await supabaseService.poolUnsoldPlayers();
           toast({
@@ -609,6 +610,11 @@ export function AdminPools() {
                               >
                                 {player.role}
                               </span>
+                              {player.status === "sold" && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 border border-green-500/30 font-bold">
+                                  Sold
+                                </span>
+                              )}
                               {player.status === "unsold" && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
                                   Unsold

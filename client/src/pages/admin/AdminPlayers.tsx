@@ -23,6 +23,7 @@ import { AUCTION_CONFIG } from "@shared/config";
 import { AdminHeader } from "@/components/AdminHeader";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CustomDropdown } from "@/components/CustomDropdown";
+import { queryClient } from "@/lib/queryClient";
 
 const ROLE_OPTIONS = [
   {
@@ -50,6 +51,42 @@ const ROLE_OPTIONS = [
     badgeColor: "bg-amber-500/20 text-amber-300 border-amber-500/30",
   },
 ];
+
+const CardPreviewImage = ({
+  src,
+  name,
+}: {
+  src?: string;
+  name?: string;
+}) => {
+  const [hasError, setHasError] = useState(false);
+  const trimmedSrc = src?.trim() || "";
+
+  useEffect(() => {
+    setHasError(false);
+  }, [trimmedSrc]);
+
+  if (!trimmedSrc || hasError) {
+    const initial = name && name.trim() ? name.trim().charAt(0).toUpperCase() : "?";
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#1e293b] to-[#0f1629] text-white/70 font-bold select-none">
+        <div className="w-16 h-16 rounded-2xl bg-black/40 border border-white/15 flex items-center justify-center text-2xl font-extrabold shadow-inner text-[#00BCD4]">
+          {initial}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      key={trimmedSrc}
+      src={trimmedSrc}
+      alt={name || "Player Preview"}
+      className="w-full h-full object-cover object-top"
+      onError={() => setHasError(true)}
+    />
+  );
+};
 
 export function AdminPlayers() {
   const { toast } = useToast();
@@ -112,21 +149,31 @@ export function AdminPlayers() {
     }
   };
 
-  const handleClearUnsold = async () => {
-    setIsClearingUnsold(true);
-    try {
-      await supabaseService.clearAllUnsold();
-      toast({
-        title: "Unsold Status Cleared",
-        description: "All unauctioned players are now available in the pool with no unsold stamps.",
-      });
-      await loadPlayers();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to clear unsold status";
-      toast({ title: message, variant: "destructive" });
-    } finally {
-      setIsClearingUnsold(false);
-    }
+  const handleClearUnsold = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: "Reset Unsold to Available",
+      description: "Are you sure you want to remove the UNSOLD status from all unauctioned players and make them Available in the pool?",
+      confirmText: "Reset to Available",
+      variant: "warning",
+      onConfirm: async () => {
+        setIsClearingUnsold(true);
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+        try {
+          const count = await supabaseService.clearAllUnsold();
+          toast({
+            title: "Unsold Status Cleared",
+            description: `${count} players are now marked available in the auction pool.`,
+          });
+          await loadPlayers();
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : "Failed to clear unsold status";
+          toast({ title: message, variant: "destructive" });
+        } finally {
+          setIsClearingUnsold(false);
+        }
+      },
+    });
   };
 
   useEffect(() => {
@@ -160,6 +207,11 @@ export function AdminPlayers() {
 
     setIsSaving(true);
     try {
+      let finalImageUrl = formData.image_url.trim();
+      if (finalImageUrl && (finalImageUrl.startsWith("http://") || finalImageUrl.startsWith("https://"))) {
+        finalImageUrl = await supabaseService.uploadImageFromUrl("player-images", finalImageUrl);
+      }
+
       const playerPayload = {
         name: formData.name.trim(),
         age: formData.age ? parseInt(formData.age) : null,
@@ -172,7 +224,7 @@ export function AdminPlayers() {
         batting_sr: formData.batting_sr ? parseFloat(formData.batting_sr) : null,
         wickets: formData.wickets ? parseInt(formData.wickets) : null,
         economy: formData.economy ? parseFloat(formData.economy) : null,
-        image_url: formData.image_url.trim() || null,
+        image_url: finalImageUrl || null,
       };
 
       if (editingPlayer && editingPlayer.dbId) {
@@ -181,7 +233,7 @@ export function AdminPlayers() {
       } else {
         await supabaseService.addPlayer({
           ...playerPayload,
-          status: "unsold",
+          status: "available",
         });
         toast({ title: `Added ${formData.name}` });
       }
@@ -208,8 +260,10 @@ export function AdminPlayers() {
       onConfirm: async () => {
         try {
           await supabaseService.deletePlayer(player.dbId!);
-          toast({ title: `Deleted ${player.name}` });
+          toast({ title: `Deleted ${player.name} from database` });
           await loadPlayers();
+          queryClient.invalidateQueries({ queryKey: ["players"] });
+          queryClient.invalidateQueries({ queryKey: ["unsoldPlayers"] });
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : "Failed to delete player";
           toast({ title: message, variant: "destructive" });
@@ -691,20 +745,7 @@ export function AdminPlayers() {
                     <div className="sticky top-6 w-full max-w-xs rounded-2xl bg-[#141c2e] border border-white/15 overflow-hidden shadow-2xl p-4 space-y-3">
                       {/* Image / Avatar Header */}
                       <div className="relative w-full h-44 rounded-xl bg-gradient-to-br from-[#1e293b] to-[#0b2a7d]/40 overflow-hidden flex items-center justify-center border border-white/10">
-                        {formData.image_url ? (
-                          <img
-                            src={formData.image_url}
-                            alt="Preview"
-                            className="w-full h-full object-cover object-top"
-                            onError={(e) => {
-                              (e.target as HTMLElement).style.display = "none";
-                            }}
-                          />
-                        ) : (
-                          <div className="w-16 h-16 rounded-full bg-[#1a2332] border border-white/20 flex items-center justify-center text-2xl font-bold text-white/70">
-                            {formData.name.trim() ? formData.name.trim().charAt(0).toUpperCase() : "?"}
-                          </div>
-                        )}
+                        <CardPreviewImage src={formData.image_url} name={formData.name} />
 
                         {/* Top-right badges */}
                         <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
@@ -951,16 +992,16 @@ export function AdminPlayers() {
                             <td className="px-2.5 py-2.5 sm:px-3 sm:py-3 whitespace-nowrap">
                               <span
                                 className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                                  player.status === "sold" && player.soldPrice > 0
+                                  player.status === "sold"
                                     ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                                    : player.isUnsold
+                                    : player.status === "unsold"
                                     ? "bg-red-500/20 text-red-400 border border-red-500/30"
                                     : "bg-blue-500/20 text-blue-300 border border-blue-500/30"
                                 }`}
                               >
-                                {player.status === "sold" && player.soldPrice > 0
+                                {player.status === "sold"
                                   ? "SOLD"
-                                  : player.isUnsold
+                                  : player.status === "unsold"
                                   ? "UNSOLD"
                                   : "IN AUCTION"}
                               </span>

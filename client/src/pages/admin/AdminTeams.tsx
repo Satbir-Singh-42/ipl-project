@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { supabaseService } from "@/services/supabaseService";
 import type { TeamStats } from "@/services/supabaseService";
+import { queryClient } from "@/lib/queryClient";
 import { formatIndianNumber } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
@@ -175,11 +176,16 @@ export function AdminTeams() {
     const cleanColor = sanitizeHexColor(teamForm.borderColor);
     setIsSubmitting(true);
     try {
+      let finalLogoUrl = teamForm.logoUrl.trim();
+      if (finalLogoUrl && (finalLogoUrl.startsWith("http://") || finalLogoUrl.startsWith("https://"))) {
+        finalLogoUrl = await supabaseService.uploadImageFromUrl("team-logos", finalLogoUrl);
+      }
+
       if (editingTeam) {
         // Update existing team
         await supabaseService.updateTeam(editingTeam.teamId, {
           name: teamForm.name.trim(),
-          logo_url: teamForm.logoUrl.trim(),
+          logo_url: finalLogoUrl,
           border_color: cleanColor,
           starting_budget: budget,
         });
@@ -189,7 +195,7 @@ export function AdminTeams() {
         await supabaseService.createTeam({
           name: teamForm.name.trim(),
           slug: teamForm.slug.trim() || undefined,
-          logo_url: teamForm.logoUrl.trim(),
+          logo_url: finalLogoUrl,
           border_color: cleanColor,
           starting_budget: budget,
         });
@@ -223,8 +229,12 @@ export function AdminTeams() {
 
     try {
       await supabaseService.deleteTeam(team.teamId);
-      toast({ title: `Team "${team.teamName}" removed` });
+      toast({ title: `Team "${team.teamName}" deleted from database` });
       await loadTeams();
+      queryClient.invalidateQueries({ queryKey: ["teams"] });
+      queryClient.invalidateQueries({ queryKey: ["leaderboard"] });
+      queryClient.invalidateQueries({ queryKey: ["players"] });
+      queryClient.invalidateQueries({ queryKey: ["soldPlayers"] });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to delete team";
       toast({ title: message, variant: "destructive" });
