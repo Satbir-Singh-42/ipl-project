@@ -19,7 +19,7 @@
  * - Database persistence via Supabase
  * - Fully responsive design
  * - Admin panel for player/team management
- * - Role-based access (admin, auctioneer, public)
+ * - Role-based access (admin, public)
  */
 
 // ═══════════════════════════════════════════════════════════════════════════

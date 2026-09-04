@@ -18,6 +18,7 @@ import {
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
+import { useTournament } from "@/contexts/TournamentContext";
 import { useAuctionRules } from "@/hooks/useAuctionRules";
 import { LoadingPage } from "@/components/LoadingPage";
 import { AdminHeader } from "@/components/AdminHeader";
@@ -66,6 +67,7 @@ function PlayerImage({
 }
 
 export default function AuctionPage() {
+  const { currentTournament } = useTournament();
   const { players, isLoadingPlayers, refetchPlayers, teamStats, refetchTeams } = useIPLData();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -758,7 +760,7 @@ export default function AuctionPage() {
                 Admin Dashboard
               </button>
               <button
-                onClick={() => setLocation("/")}
+                onClick={() => setLocation(currentTournament?.room_code ? `/room/${currentTournament.room_code}` : "/")}
                 className="px-5 py-2.5 rounded-full bg-white text-[#18184a] border border-[#18184a]/20 text-sm font-bold shadow-sm hover:bg-slate-100 transition-colors"
               >
                 Public View

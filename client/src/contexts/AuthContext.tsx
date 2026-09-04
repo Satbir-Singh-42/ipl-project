@@ -7,18 +7,20 @@ import {
 } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { supabaseService } from "@/services/supabaseService";
 
-export type UserRole = "admin" | "auctioneer" | null;
+export type UserRole = "admin" | null;
 
 interface AuthContextType {
   user: User | null;
   role: UserRole;
   displayName: string;
   isLoading: boolean;
+  scopedTournamentId: number | null;
+  isMasterAdmin: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   isAdmin: boolean;
-  isAuctioneer: boolean;
   isAuthenticated: boolean;
 }
 
@@ -28,6 +30,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<UserRole>(null);
   const [displayName, setDisplayName] = useState<string>("");
+  const [scopedTournamentId, setScopedTournamentId] = useState<number | null>(null);
+  const [isMasterAdmin, setIsMasterAdmin] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(true);
 
   // Fetch user role and display_name from users_meta table
@@ -61,7 +65,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return String(metaFullName).trim();
     }
     if (r === "admin") return "Admin";
-    if (r === "auctioneer") return "Auctioneer";
     return "User";
   };
 
@@ -69,6 +72,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Check existing session on mount
     const initAuth = async () => {
       try {
+        // 1. Check local custom admin session
+        const customSessionRaw = localStorage.getItem("ipl_custom_auth_session");
+        if (customSessionRaw) {
+          try {
+            const customSession = JSON.parse(customSessionRaw);
+            if (customSession?.role === "admin") {
+              setUser({ id: customSession.id || "custom_auth", email: customSession.email || "admin@ipl.com" } as User);
+              setRole("admin");
+              setDisplayName(customSession.displayName || "Admin");
+              setScopedTournamentId(customSession.tournamentId ?? null);
+              setIsMasterAdmin(customSession.isMasterAdmin ?? (customSession.email === "admin@ipl.com"));
+              setIsLoading(false);
+              return;
+            }
+          } catch {
+            localStorage.removeItem("ipl_custom_auth_session");
+          }
+        }
+
+        // 2. Check Supabase Auth session
         const {
           data: { session },
         } = await supabase.auth.getSession();
@@ -80,6 +103,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setDisplayName(
             getResolvedDisplayName(session.user, meta.displayName, meta.role),
           );
+          setIsMasterAdmin(meta.role === "admin");
+          setScopedTournamentId(null);
         }
       } catch (err) {
         console.error("Auth initialization failed:", err);
@@ -94,6 +119,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const customSessionRaw = localStorage.getItem("ipl_custom_auth_session");
+      if (customSessionRaw) return; // Keep custom admin session active
+
       if (event === "SIGNED_IN" && session?.user) {
         setUser(session.user);
         const meta = await fetchUserMeta(session.user.id);
@@ -101,32 +129,106 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setDisplayName(
           getResolvedDisplayName(session.user, meta.displayName, meta.role),
         );
+        setIsMasterAdmin(meta.role === "admin");
+        setScopedTournamentId(null);
       } else if (event === "SIGNED_OUT") {
         setUser(null);
         setRole(null);
         setDisplayName("");
+        setScopedTournamentId(null);
+        setIsMasterAdmin(false);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
-  const login = async (email: string, password: string): Promise<void> => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+  const login = async (identifier: string, password: string): Promise<void> => {
+    const cleanId = (identifier || "").trim();
+    const cleanPass = (password || "").trim();
 
-    if (error) {
-      throw new Error(error.message);
+    if (!cleanId || !cleanPass) {
+      throw new Error("Username/Email and Password are required.");
     }
+
+    // 1. Direct Master Administrator Credentials (No Supabase User needed)
+    if (
+      (cleanId.toLowerCase() === "admin" ||
+        cleanId.toLowerCase() === "admin@ipl.com" ||
+        cleanId.toLowerCase() === "administrator") &&
+      (cleanPass === "admin123" || cleanPass === "admin")
+    ) {
+      const sessionData = {
+        id: "admin_master",
+        role: "admin" as UserRole,
+        displayName: "Administrator",
+        email: "admin@ipl.com",
+        isMasterAdmin: true,
+        tournamentId: null,
+      };
+      localStorage.setItem("ipl_custom_auth_session", JSON.stringify(sessionData));
+      setUser({ id: "admin_master", email: "admin@ipl.com" } as User);
+      setRole("admin");
+      setDisplayName("Administrator");
+      setIsMasterAdmin(true);
+      setScopedTournamentId(null);
+      return;
+    }
+
+    // 2. Room-Specific Admin Host Login via Room Code + Room Admin Password
+    const roomAuth = await supabaseService.verifyRoomAdminCredentials(cleanId, cleanPass);
+    if (roomAuth.success && roomAuth.tournament) {
+      const target = roomAuth.tournament;
+      const sessionData = {
+        id: `room_admin_${target.id}`,
+        role: "admin" as UserRole,
+        displayName: `${target.name} Host`,
+        email: `${target.room_code.toLowerCase()}@admin.local`,
+        isMasterAdmin: false,
+        tournamentId: target.id,
+      };
+      localStorage.setItem("ipl_custom_auth_session", JSON.stringify(sessionData));
+      supabaseService.setActiveTournamentId(target.id);
+      setUser({ id: `room_admin_${target.id}`, email: sessionData.email } as User);
+      setRole("admin");
+      setDisplayName(`${target.name} Host`);
+      setIsMasterAdmin(false);
+      setScopedTournamentId(target.id);
+      return;
+    }
+
+    // 3. Supabase Auth User Fallback (Only attempted if identifier is in email format)
+    if (cleanId.includes("@")) {
+      try {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: cleanId,
+          password: cleanPass,
+        });
+
+        if (error) {
+          throw new Error("Invalid email or password.");
+        }
+        return;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Invalid credentials.";
+        throw new Error(msg);
+      }
+    }
+
+    // If identifier is not an email and direct checks failed
+    throw new Error("Invalid username/room code or password.");
   };
 
   const logout = async (): Promise<void> => {
-    await supabase.auth.signOut();
+    localStorage.removeItem("ipl_custom_auth_session");
+    await supabase.auth.signOut().catch(() => {});
     setUser(null);
     setRole(null);
     setDisplayName("");
+    setScopedTournamentId(null);
+    setIsMasterAdmin(false);
   };
 
   return (
@@ -136,11 +238,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role,
         displayName,
         isLoading,
+        scopedTournamentId,
+        isMasterAdmin,
         login,
         logout,
         isAdmin: role === "admin",
-        isAuctioneer: role === "auctioneer",
-        isAuthenticated: !!user,
+        isAuthenticated: !!user && !!role,
       }}
     >
       {children}

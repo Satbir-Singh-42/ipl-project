@@ -38,8 +38,8 @@ const navItems = [
 ];
 
 const keyboardShortcuts = [
-  { keys: ["R"], desc: "Undo last sold/unsold action" },
-  { keys: ["Z"], desc: "Manual sync with Supabase" },
+  { keys: ["P"], desc: "Set player in auction" },
+  { keys: ["Z"], desc: "Manual sync with Database" },
   { keys: ["←", "→"], desc: "Navigate previous / next player" },
   { keys: ["S"], desc: "Mark player as Sold (confetti + 1s delay)" },
   { keys: ["U"], desc: "Mark player as Unsold (stamp + 1s delay)" },
@@ -190,7 +190,7 @@ export const GuidelinesView = (): JSX.Element => {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-200 leading-relaxed">
                 <div className="bg-black/30 p-3 rounded-lg border border-white/5">
                   <p className="font-bold text-orange-300 mb-1">1. Base Price Opening</p>
-                  <p>Each player has a set base price. The auctioneer opens bidding at this starting amount.</p>
+                  <p>Each player has a set base price. The auction opens bidding at this starting amount.</p>
                 </div>
                 <div className="bg-black/30 p-3 rounded-lg border border-white/5">
                   <p className="font-bold text-orange-300 mb-1">2. Quick Increments</p>
@@ -355,7 +355,7 @@ export const GuidelinesView = (): JSX.Element => {
                     <Wifi className="w-4 h-4" />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-white font-['Work_Sans',sans-serif]">Real-Time Supabase</p>
+                    <p className="text-sm font-bold text-white font-['Work_Sans',sans-serif]">Real-Time Database</p>
                     <p className="text-xs text-slate-300 leading-relaxed">Instant live synchronization across all connected clients without page reloads.</p>
                   </div>
                 </div>
@@ -386,7 +386,7 @@ export const GuidelinesView = (): JSX.Element => {
               </div>
               <div className="space-y-2">
                 {[
-                  { icon: Eye, text: "Live real-time auction management with Supabase" },
+                  { icon: Eye, text: "Live real-time auction management with database" },
                   { icon: Search, text: "Fast player search & set filters across names, roles, nations" },
                   { icon: Filter, text: "Sortable tables for sold, unsold, and team rosters" },
                   { icon: LayoutGrid, text: "Playing XI builder with role constraints and CSV export" },

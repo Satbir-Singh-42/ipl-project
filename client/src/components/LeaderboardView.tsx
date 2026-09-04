@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TeamStats, supabaseService } from "@/services/supabaseService";
-import { ChevronUp, ChevronDown } from "lucide-react";
+import { ChevronUp, ChevronDown, Shield } from "lucide-react";
 
 interface LeaderboardViewProps {
   leaderboard: TeamStats[];
@@ -243,68 +243,86 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {sortedLeaderboard.map((team, index) => {
-                  const isEven = index % 2 === 0;
-                  const rank = rankMap.get(team.teamId) ?? index + 1;
-                  const isTop3 = rank <= 3;
+                {sortedLeaderboard.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-16 px-4 text-center">
+                      <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
+                        <div className="w-14 h-14 rounded-2xl bg-[#18184a] border border-white/10 flex items-center justify-center text-[#fe6804] mb-3 shadow-lg">
+                          <Shield className="w-7 h-7 opacity-80" />
+                        </div>
+                        <h4 className="text-base sm:text-lg font-bold text-white mb-1">
+                          No Teams Registered Yet
+                        </h4>
+                        <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
+                          Teams configured by the tournament organizer will appear on this leaderboard with live budget tracking and squad metrics.
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  sortedLeaderboard.map((team, index) => {
+                    const isEven = index % 2 === 0;
+                    const rank = rankMap.get(team.teamId) ?? index + 1;
+                    const isTop3 = rank <= 3;
 
-                  return (
-                    <tr
-                      key={team.teamId}
-                      className={`hover:bg-white/[0.06] transition-colors ${
-                        isEven ? "bg-[#0f1629]/80" : "bg-[#141b33]/80"
-                      }`}>
-                      <td className="py-3 px-2.5 sm:px-3.5 text-center">
-                        <div
-                          className={`flex items-center justify-center w-6 h-6 sm:w-7 sm:h-7 mx-auto rounded-full font-bold text-xs sm:text-sm shadow-sm ${
-                            rank === 1
-                              ? "bg-gradient-to-r from-amber-400 to-yellow-500 text-black shadow-amber-500/30"
-                              : rank === 2
-                              ? "bg-gradient-to-r from-slate-200 to-slate-400 text-black shadow-slate-300/30"
-                              : rank === 3
-                              ? "bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-orange-500/30"
-                              : "bg-white/10 text-white/80 border border-white/15"
-                          }`}
-                        >
-                          {rank}
-                        </div>
-                      </td>
-                      <td className="py-3 px-2.5 sm:px-3.5">
-                        <div className="flex items-center gap-2 sm:gap-3">
-                          <TeamLogo
-                            className="w-7 h-7 sm:w-9 sm:h-9"
-                            logo={
-                              teamLogos[team.teamName] ||
-                              team.teamName
-                                .split(" ")
-                                .map((w) => w[0])
-                                .join("")
-                            }
-                            name={team.teamName}
-                          />
-                          <span className="text-white font-semibold text-xs sm:text-sm md:text-base truncate max-w-[130px] sm:max-w-[200px]">
-                            {team.teamName}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-2.5 sm:px-3 text-center text-emerald-400 font-bold text-xs sm:text-sm md:text-base whitespace-nowrap">
-                        {formatCurrency(team.totalSpent)}
-                      </td>
-                      <td className="py-3 px-2.5 sm:px-3 text-center text-cyan-400 font-bold text-xs sm:text-sm md:text-base whitespace-nowrap">
-                        {formatCurrency(team.fundsRemaining)}
-                      </td>
-                      <td className="py-3 px-2 sm:px-3 text-center text-slate-200 font-semibold text-xs sm:text-sm md:text-base">
-                        {team.playersCount}
-                      </td>
-                      <td className="py-3 px-2 sm:px-3 text-center text-purple-300 font-semibold text-xs sm:text-sm md:text-base">
-                        {team.overseasCount}
-                      </td>
-                      <td className="py-3 px-2.5 sm:px-3.5 text-center text-amber-300 font-extrabold text-xs sm:text-sm md:text-base">
-                        {team.totalPoints}
-                      </td>
-                    </tr>
-                  );
-                })}
+                    return (
+                      <tr
+                        key={team.teamId}
+                        className={`hover:bg-white/[0.06] transition-colors ${
+                          isEven ? "bg-[#0f1629]/80" : "bg-[#141b33]/80"
+                        }`}>
+                        <td className="py-3 px-2.5 sm:px-3.5 text-center">
+                          <div
+                            className={`flex items-center justify-center w-6 h-6 sm:w-7 sm:h-7 mx-auto rounded-full font-bold text-xs sm:text-sm shadow-sm ${
+                              rank === 1
+                                ? "bg-gradient-to-r from-amber-400 to-yellow-500 text-black shadow-amber-500/30"
+                                : rank === 2
+                                ? "bg-gradient-to-r from-slate-200 to-slate-400 text-black shadow-slate-300/30"
+                                : rank === 3
+                                ? "bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-orange-500/30"
+                                : "bg-white/10 text-white/80 border border-white/15"
+                            }`}
+                          >
+                            {rank}
+                          </div>
+                        </td>
+                        <td className="py-3 px-2.5 sm:px-3.5">
+                          <div className="flex items-center gap-2 sm:gap-3">
+                            <TeamLogo
+                              className="w-7 h-7 sm:w-9 sm:h-9"
+                              logo={
+                                teamLogos[team.teamName] ||
+                                team.teamName
+                                  .split(" ")
+                                  .map((w) => w[0])
+                                  .join("")
+                              }
+                              name={team.teamName}
+                            />
+                            <span className="text-white font-semibold text-xs sm:text-sm md:text-base truncate max-w-[130px] sm:max-w-[200px]">
+                              {team.teamName}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-2.5 sm:px-3 text-center text-emerald-400 font-bold text-xs sm:text-sm md:text-base whitespace-nowrap">
+                          {formatCurrency(team.totalSpent)}
+                        </td>
+                        <td className="py-3 px-2.5 sm:px-3 text-center text-cyan-400 font-bold text-xs sm:text-sm md:text-base whitespace-nowrap">
+                          {formatCurrency(team.fundsRemaining)}
+                        </td>
+                        <td className="py-3 px-2 sm:px-3 text-center text-slate-200 font-semibold text-xs sm:text-sm md:text-base">
+                          {team.playersCount}
+                        </td>
+                        <td className="py-3 px-2 sm:px-3 text-center text-purple-300 font-semibold text-xs sm:text-sm md:text-base">
+                          {team.overseasCount}
+                        </td>
+                        <td className="py-3 px-2.5 sm:px-3.5 text-center text-amber-300 font-extrabold text-xs sm:text-sm md:text-base">
+                          {team.totalPoints}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>

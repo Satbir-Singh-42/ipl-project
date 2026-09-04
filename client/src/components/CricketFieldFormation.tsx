@@ -795,7 +795,7 @@ export function CricketFieldFormation({
                           <Plane className="w-3 h-3 text-[#00BCD4] shrink-0" />
                         )}
                       </div>
-                      <div className="flex items-center gap-2 text-[10px] text-white/50">
+                      <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-white/50 mt-0.5">
                         <span
                           className={`px-1 rounded border text-[9px] font-semibold ${getRoleBadgeStyle(
                             player.role,
@@ -803,7 +803,12 @@ export function CricketFieldFormation({
                         >
                           {player.role}
                         </span>
-                        <span>₹{formatIndianNumber(player.soldPrice || player.basePrice)}</span>
+                        <span className="font-mono text-white/70">
+                          ₹{formatIndianNumber(player.soldPrice || player.basePrice)}
+                        </span>
+                        <span className="font-mono font-bold text-amber-300 bg-amber-400/10 px-1.5 py-0.2 rounded border border-amber-400/30 text-[9px]">
+                          {player.points ?? 0} pts
+                        </span>
                       </div>
                     </div>
                   </div>

@@ -10,7 +10,7 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({
   children,
-  requiredRole,
+  requiredRole = "admin",
 }: ProtectedRouteProps) {
   const { isAuthenticated, role, isLoading } = useAuth();
 
@@ -22,22 +22,10 @@ export function ProtectedRoute({
     return <Redirect to="/login" replace />;
   }
 
-  // Admin can access everything
+  // Admin / Host can access protected routes
   if (role === "admin") {
     return <>{children}</>;
   }
 
-  // At this point, role is "auctioneer" or null (admin already returned above)
-
-  // Admin-only routes block non-admin users
-  if (requiredRole === "admin") {
-    return <Redirect to="/" replace />;
-  }
-
-  // Auctioneer routes require at least auctioneer role
-  if (requiredRole === "auctioneer" && role !== "auctioneer") {
-    return <Redirect to="/login" replace />;
-  }
-
-  return <>{children}</>;
+  return <Redirect to="/login" replace />;
 }

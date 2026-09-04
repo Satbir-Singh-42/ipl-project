@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import {
   Download,
   AlertTriangle,
@@ -7,18 +8,24 @@ import {
   CheckCircle2,
   Shield,
   FileSpreadsheet,
+  Trash2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabaseService, Player, TeamStats } from "@/services/supabaseService";
 import { useToast } from "@/hooks/use-toast";
 import { AdminHeader } from "@/components/AdminHeader";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useTournament } from "@/contexts/TournamentContext";
 import { formatIndianNumber } from "@/lib/utils";
 
 export function AdminExport() {
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { currentTournament, deleteTournament, tournaments, switchTournament } = useTournament();
   const [isResetting, setIsResetting] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isDeletingRoom, setIsDeletingRoom] = useState(false);
+  const [showDeleteRoomConfirm, setShowDeleteRoomConfirm] = useState(false);
   const [teamLogos, setTeamLogos] = useState<Record<string, string>>({});
   const [stats, setStats] = useState<{
     mostExpensive: Player | null;
@@ -122,6 +129,30 @@ export function AdminExport() {
     } finally {
       setIsResetting(false);
       setShowResetConfirm(false);
+    }
+  };
+
+  const handleDeleteRoom = async () => {
+    if (!currentTournament) return;
+
+    setIsDeletingRoom(true);
+    try {
+      await deleteTournament(currentTournament.id);
+      toast({
+        title: "Tournament Room Deleted",
+        description: `Room [${currentTournament.name}] has been permanently deleted.`,
+      });
+      setShowDeleteRoomConfirm(false);
+      setLocation("/");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to delete room.";
+      toast({
+        title: "Deletion Error",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeletingRoom(false);
     }
   };
 
@@ -294,14 +325,14 @@ export function AdminExport() {
               </div>
 
               {/* Danger Zone */}
-              <div className="pt-2">
+              <div className="pt-2 space-y-4">
                 <div className="bg-red-950/30 border border-red-500/40 rounded-xl p-4 sm:p-5 shadow-lg space-y-3">
                   <h4 className="text-red-300 font-bold text-sm sm:text-base flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-red-400" />
-                    Danger Zone
+                    Reset Auction State
                   </h4>
                   <p className="text-white/70 text-xs sm:text-sm">
-                    Resetting the auction will mark ALL players as unsold, wipe all sold prices, and clear team rosters. This action cannot be reversed.
+                    Resetting the auction will mark all players as unsold, wipe all sold prices, and clear team rosters for room [{currentTournament?.name || "current room"}].
                   </p>
                   <button
                     onClick={() => setShowResetConfirm(true)}
@@ -311,13 +342,37 @@ export function AdminExport() {
                     Reset Entire Auction
                   </button>
                 </div>
+
+                <div className="bg-red-950/40 border-2 border-red-600/50 rounded-xl p-4 sm:p-5 shadow-lg space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <h4 className="text-red-300 font-bold text-sm sm:text-base flex items-center gap-2">
+                      <Trash2 className="w-4 h-4 sm:w-5 sm:h-5 text-red-400" />
+                      Delete Tournament Room Permanently
+                    </h4>
+                    {currentTournament && (
+                      <span className="bg-red-500/20 text-red-300 border border-red-500/40 text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full">
+                        #{currentTournament.room_code}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-white/70 text-xs sm:text-sm">
+                    Permanently delete <strong className="text-white">"{currentTournament?.name}"</strong> along with all of its isolated franchises, players, bidding logs, and squad configurations. This action is irreversible.
+                  </p>
+                  <button
+                    onClick={() => setShowDeleteRoomConfirm(true)}
+                    disabled={isDeletingRoom || !currentTournament}
+                    className="px-5 py-2 sm:px-6 sm:py-2.5 rounded-full bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 text-white text-xs sm:text-sm font-bold transition-all active:scale-95 disabled:opacity-50 shadow-md"
+                  >
+                    Delete Room Permanently
+                  </button>
+                </div>
               </div>
             </CardContent>
           </Card>
         </div>
       </section>
 
-      {/* Confirmation Modal */}
+      {/* Reset Confirmation Modal */}
       <ConfirmDialog
         isOpen={showResetConfirm}
         onClose={() => setShowResetConfirm(false)}
@@ -327,6 +382,18 @@ export function AdminExport() {
         confirmText="Reset Entire Auction"
         variant="danger"
         isLoading={isResetting}
+      />
+
+      {/* Delete Room Confirmation Modal */}
+      <ConfirmDialog
+        isOpen={showDeleteRoomConfirm}
+        onClose={() => setShowDeleteRoomConfirm(false)}
+        onConfirm={handleDeleteRoom}
+        title={`Delete "${currentTournament?.name}"?`}
+        description={`Are you sure you want to permanently delete tournament room [${currentTournament?.room_code}]? All associated teams, auction data, and players will be permanently removed.`}
+        confirmText="Delete Room Permanently"
+        variant="danger"
+        isLoading={isDeletingRoom}
       />
     </div>
   );

@@ -123,7 +123,7 @@ export function AdminDashboard() {
     {
       title: "Live Auction Page",
       description:
-        "Access the auctioneer interface with real-time bidding, keyboard controls, and sold animations.",
+        "Access the live auction interface with real-time bidding, keyboard controls, and sold animations.",
       href: "/auction",
       icon: Settings,
       buttonText: "Launch Auction",
@@ -175,7 +175,7 @@ export function AdminDashboard() {
                 Auction Administration Control
               </h2>
               <p className="text-white/60 text-xs sm:text-sm mt-0.5">
-                Logged in as <span className="text-white font-semibold">{displayName || (role === "admin" ? "Admin" : "Auctioneer")}</span>
+                Logged in as <span className="text-white font-semibold">{displayName || "Admin"}</span>
               </p>
             </div>
             <div className="flex items-center gap-2">

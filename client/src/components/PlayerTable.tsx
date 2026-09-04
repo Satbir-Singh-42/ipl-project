@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Player, Team } from "@/services/supabaseService";
-import { ChevronUp, ChevronDown, Search } from "lucide-react";
+import { ChevronUp, ChevronDown, Search, Users } from "lucide-react";
 
 interface PlayerTableProps {
   players: Player[];
@@ -366,8 +366,20 @@ export const PlayerTable: React.FC<PlayerTableProps> = ({
                         colSpan={
                           6 + (showFinalBidPrice ? 1 : 0) + (showPoints ? 1 : 0)
                         }
-                        className="text-center py-12 text-slate-400 text-sm">
-                        No players found
+                        className="text-center py-16 px-4">
+                        <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
+                          <div className="w-14 h-14 rounded-2xl bg-[#18184a] border border-white/10 flex items-center justify-center text-[#00bcd4] mb-3 shadow-lg">
+                            <Users className="w-7 h-7 opacity-80" />
+                          </div>
+                          <h4 className="text-base sm:text-lg font-bold text-white mb-1">
+                            No Players Found
+                          </h4>
+                          <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
+                            {searchQuery
+                              ? `No players matched your search "${searchQuery}".`
+                              : "No players have been registered in this set yet."}
+                          </p>
+                        </div>
                       </td>
                     </tr>
                   ) : (

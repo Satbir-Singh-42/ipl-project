@@ -555,22 +555,22 @@ export function AdminTeams() {
                             </div>
 
                             {/* Admin Action Controls: Roster and Edit */}
-                            <div className="flex items-center justify-between gap-2.5 w-full pt-1">
+                            <div className="grid grid-cols-2 gap-2 w-full pt-1">
                               <Link
                                 href={`/team/${team.teamId}`}
                                 title="View Public Roster & Dashboard"
-                                className="flex-1 py-2 px-3 rounded-2xl bg-black/40 hover:bg-black/60 text-white/90 hover:text-white border border-white/20 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-sm"
+                                className="h-8.5 py-1.5 px-3 rounded-xl bg-black/40 hover:bg-black/60 text-white/90 hover:text-white border border-white/20 text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-sm text-center select-none"
                               >
-                                <ExternalLink className="w-3.5 h-3.5 text-[#00BCD4]" />
+                                <ExternalLink className="w-3.5 h-3.5 text-[#00BCD4] shrink-0" />
                                 <span>Roster</span>
                               </Link>
                               <button
                                 type="button"
                                 onClick={() => openEditModal(team)}
                                 title="Edit Franchise Details, Budget & Colors"
-                                className="flex-1 py-2 px-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white/90 hover:text-white border border-white/20 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-sm"
+                                className="h-8.5 py-1.5 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-white/90 hover:text-white border border-white/20 text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-sm text-center select-none"
                               >
-                                <Edit2 className="w-3.5 h-3.5 text-white/80" />
+                                <Edit2 className="w-3.5 h-3.5 text-white/80 shrink-0" />
                                 <span>Edit</span>
                               </button>
                             </div>

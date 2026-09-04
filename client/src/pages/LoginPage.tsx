@@ -61,26 +61,26 @@ export function LoginPage() {
               IPL Auction 2025
             </CardTitle>
             <p className="text-white/50 text-sm">
-              Admin and Auctioneer Login
+              Admin & Host Login
             </p>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-white/60 text-xs font-semibold mb-1.5">
-                  Email
+                <label className="block text-white/70 text-xs font-medium mb-1">
+                  Username or Room Code
                 </label>
                 <input
-                  type="email"
+                  type="text"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@example.com"
+                  placeholder="admin or room code"
                   className="w-full px-4 py-2.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-[#fe6804]/50 focus:border-[#fe6804]/50"
-                  autoComplete="email"
+                  autoComplete="username"
                 />
               </div>
               <div>
-                <label className="block text-white/60 text-xs font-semibold mb-1.5">
+                <label className="block text-white/70 text-xs font-medium mb-1">
                   Password
                 </label>
                 <div className="relative">
@@ -88,7 +88,7 @@ export function LoginPage() {
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter password"
+                    placeholder="Password"
                     className="w-full pl-4 pr-11 py-2.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-[#fe6804]/50 focus:border-[#fe6804]/50"
                     autoComplete="current-password"
                   />
@@ -109,17 +109,18 @@ export function LoginPage() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full py-2.5 rounded-lg bg-gradient-to-r from-[#fe6804] to-[#ef4123] text-white text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
+                className="w-full py-2.5 rounded-lg bg-gradient-to-r from-[#fe6804] to-[#ef4123] text-white text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50 shadow-md"
               >
                 {isSubmitting ? "Signing in..." : "Sign In"}
               </button>
             </form>
-            <div className="mt-6 text-center">
+
+            <div className="mt-4 text-center">
               <button
                 onClick={() => setLocation("/")}
-                className="text-white/40 text-xs hover:text-white/60 transition-colors"
+                className="text-white/40 text-xs hover:text-white/70 transition-colors"
               >
-                Back to Public View
+                Back to Public Portal
               </button>
             </div>
           </CardContent>

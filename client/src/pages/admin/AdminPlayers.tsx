@@ -940,7 +940,7 @@ export function AdminPlayers() {
                 <div className="mt-3 p-3 sm:p-4 rounded-xl bg-[#1a2332] border border-[#00BCD4] flex items-center gap-3 text-white">
                   <div className="w-5 h-5 rounded-full border-2 border-[#00BCD4] border-t-transparent animate-spin shrink-0" />
                   <div>
-                    <div className="text-sm font-bold text-white">Importing Players into Supabase...</div>
+                    <div className="text-sm font-bold text-white">Importing Players into Database...</div>
                     <div className="text-xs text-white/60">Parsing records and updating database. Please wait.</div>
                   </div>
                 </div>

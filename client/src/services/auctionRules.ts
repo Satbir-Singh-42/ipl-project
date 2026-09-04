@@ -151,28 +151,29 @@ export function getAuctionRules(): AuctionSquadRules {
 }
 
 /**
- * Asynchronously fetches rules from Supabase `auction_settings` table.
+ * Asynchronously fetches rules from Supabase `auction_settings` table for a specific tournament.
  * Updates local cache and notifies all listeners if changed.
  */
-export async function fetchAuctionRules(): Promise<AuctionSquadRules> {
+export async function fetchAuctionRules(tournamentId = 1): Promise<AuctionSquadRules> {
   try {
     const { data, error } = await supabase
       .from("auction_settings")
       .select("*")
-      .eq("id", 1)
+      .eq("tournament_id", tournamentId)
       .maybeSingle();
 
     if (!error && data) {
       const dbRules = convertFromDBRow(data as DBAuctionSettings);
       cachedRules = dbRules;
       try {
+        localStorage.setItem(`${STORAGE_KEY}_${tournamentId}`, JSON.stringify(dbRules));
         localStorage.setItem(STORAGE_KEY, JSON.stringify(dbRules));
       } catch {
         // Ignore localStorage quota errors
       }
       if (typeof window !== "undefined") {
         window.dispatchEvent(
-          new CustomEvent("ipl_rules_updated", { detail: dbRules }),
+          new CustomEvent("ipl_rules_updated", { detail: { rules: dbRules, tournamentId } }),
         );
       }
       return dbRules;
@@ -184,14 +185,16 @@ export async function fetchAuctionRules(): Promise<AuctionSquadRules> {
 }
 
 /**
- * Saves auction rules both to Supabase and to local storage.
+ * Saves auction rules both to Supabase and to local storage for a specific tournament.
  * Automatically broadcasts update event to all subscribers.
  */
 export async function saveAuctionRules(
   rules: AuctionSquadRules,
+  tournamentId = 1,
 ): Promise<{ success: boolean; error?: string }> {
   cachedRules = rules;
   try {
+    localStorage.setItem(`${STORAGE_KEY}_${tournamentId}`, JSON.stringify(rules));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(rules));
   } catch (err) {
     console.error("Failed to save rules to localStorage:", err);
@@ -199,13 +202,13 @@ export async function saveAuctionRules(
 
   if (typeof window !== "undefined") {
     window.dispatchEvent(
-      new CustomEvent("ipl_rules_updated", { detail: rules }),
+      new CustomEvent("ipl_rules_updated", { detail: { rules, tournamentId } }),
     );
   }
 
   try {
     const dbPayload = {
-      id: 1,
+      tournament_id: tournamentId,
       max_players: rules.maxPlayers,
       min_players: rules.minPlayers,
       max_overseas: rules.maxOverseas,
@@ -229,12 +232,29 @@ export async function saveAuctionRules(
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase
+    // Check if row exists for this tournament
+    const { data: existing } = await supabase
       .from("auction_settings")
-      .upsert(dbPayload, { onConflict: "id" });
+      .select("id")
+      .eq("tournament_id", tournamentId)
+      .maybeSingle();
+
+    let error;
+    if (existing) {
+      const res = await supabase
+        .from("auction_settings")
+        .update(dbPayload)
+        .eq("tournament_id", tournamentId);
+      error = res.error;
+    } else {
+      const res = await supabase
+        .from("auction_settings")
+        .insert(dbPayload);
+      error = res.error;
+    }
 
     if (error) {
-      console.warn("Supabase upsert into auction_settings error:", error.message);
+      console.warn("Supabase save auction_settings error:", error.message);
       return { success: false, error: error.message };
     }
     return { success: true };
@@ -248,8 +268,8 @@ export async function saveAuctionRules(
 /**
  * Resets auction rules to standard system defaults.
  */
-export async function resetAuctionRules(): Promise<AuctionSquadRules> {
-  await saveAuctionRules(DEFAULT_AUCTION_RULES);
+export async function resetAuctionRules(tournamentId = 1): Promise<AuctionSquadRules> {
+  await saveAuctionRules(DEFAULT_AUCTION_RULES, tournamentId);
   return DEFAULT_AUCTION_RULES;
 }
 
@@ -258,11 +278,18 @@ export async function resetAuctionRules(): Promise<AuctionSquadRules> {
  */
 export function subscribeToRulesUpdate(
   callback: (rules: AuctionSquadRules) => void,
+  tournamentId = 1,
 ): () => void {
   const handleLocalEvent = (e: Event) => {
-    const customEvent = e as CustomEvent<AuctionSquadRules>;
+    const customEvent = e as CustomEvent<{ rules: AuctionSquadRules; tournamentId: number } | AuctionSquadRules>;
     if (customEvent.detail) {
-      callback(customEvent.detail);
+      if ("rules" in customEvent.detail) {
+        if (!customEvent.detail.tournamentId || customEvent.detail.tournamentId === tournamentId) {
+          callback(customEvent.detail.rules);
+        }
+      } else {
+        callback(customEvent.detail as AuctionSquadRules);
+      }
     }
   };
 
@@ -272,19 +299,21 @@ export function subscribeToRulesUpdate(
 
   // Supabase Realtime channel
   const channel = supabase
-    .channel("realtime_auction_settings")
+    .channel(`realtime_auction_settings_${tournamentId}`)
     .on(
       "postgres_changes",
       {
         event: "*",
         schema: "public",
         table: "auction_settings",
+        filter: `tournament_id=eq.${tournamentId}`,
       },
       (payload) => {
         if (payload.new) {
           const updated = convertFromDBRow(payload.new as DBAuctionSettings);
           cachedRules = updated;
           try {
+            localStorage.setItem(`${STORAGE_KEY}_${tournamentId}`, JSON.stringify(updated));
             localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
           } catch {
             // ignore

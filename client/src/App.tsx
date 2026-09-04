@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState, useEffect } from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -8,7 +8,9 @@ import { AnimatePresence } from "framer-motion";
 import { PageTransition } from "@/components/PageTransition";
 import { LoadingPage } from "@/components/LoadingPage";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { TournamentProvider, useTournament } from "@/contexts/TournamentContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { RoomAccessGuard } from "@/components/RoomAccessGuard";
 import NotFound from "@/pages/not-found";
 
 // Lazy-loaded public pages
@@ -25,6 +27,9 @@ const PlayingXI = lazy(() =>
   import("@/pages/PlayingXI").then((m) => ({ default: m.PlayingXI })),
 );
 const AuctionPage = lazy(() => import("@/pages/AuctionPage"));
+const LandingPage = lazy(() =>
+  import("@/pages/LandingPage").then((m) => ({ default: m.LandingPage })),
+);
 
 // Lazy-loaded auth pages
 const LoginPage = lazy(() =>
@@ -35,6 +40,11 @@ const LoginPage = lazy(() =>
 const AdminDashboard = lazy(() =>
   import("@/pages/admin/AdminDashboard").then((m) => ({
     default: m.AdminDashboard,
+  })),
+);
+const AdminTournaments = lazy(() =>
+  import("@/pages/admin/AdminTournaments").then((m) => ({
+    default: m.AdminTournaments,
   })),
 );
 const AdminPlayers = lazy(() =>
@@ -59,6 +69,46 @@ const AdminLeaderboard = lazy(() =>
   })),
 );
 
+// Room Dashboard renderer keeping roomCode in URL
+function RoomDashboard({ params }: { params?: { roomCode?: string } }) {
+  const { currentTournament, switchTournament } = useTournament();
+
+  useEffect(() => {
+    if (params?.roomCode) {
+      if (currentTournament?.room_code?.toUpperCase() !== params.roomCode.toUpperCase()) {
+        switchTournament(params.roomCode);
+      }
+    }
+  }, [params?.roomCode, currentTournament?.room_code, switchTournament]);
+
+  return (
+    <RoomAccessGuard>
+      <ElementLight />
+    </RoomAccessGuard>
+  );
+}
+
+// Room Auction renderer keeping roomCode in URL
+function RoomAuction({ params }: { params?: { roomCode?: string } }) {
+  const { currentTournament, switchTournament } = useTournament();
+
+  useEffect(() => {
+    if (params?.roomCode) {
+      if (currentTournament?.room_code?.toUpperCase() !== params.roomCode.toUpperCase()) {
+        switchTournament(params.roomCode);
+      }
+    }
+  }, [params?.roomCode, currentTournament?.room_code, switchTournament]);
+
+  return (
+    <RoomAccessGuard>
+      <ProtectedRoute requiredRole="admin">
+        <AuctionPage />
+      </ProtectedRoute>
+    </RoomAccessGuard>
+  );
+}
+
 function Router() {
   const [location] = useLocation();
 
@@ -67,17 +117,62 @@ function Router() {
       <AnimatePresence mode="wait" initial={false}>
         <PageTransition key={location}>
           <Switch location={location}>
-            {/* Public routes */}
-            <Route path="/" component={ElementLight} />
-            <Route path="/leaderboard" component={ElementLight} />
-            <Route path="/team" component={TeamsListing} />
-            <Route path="/team/:teamId/playing-xi" component={PlayingXI} />
-            <Route path="/team/:teamId" component={TeamDashboard} />
+            {/* Multi-Tournament SaaS Landing Page (Root Entry) */}
+            <Route path="/" component={LandingPage} />
+            <Route path="/landing" component={LandingPage} />
+            <Route path="/portal" component={LandingPage} />
+            <Route path="/tournaments" component={LandingPage} />
+            <Route path="/rooms" component={LandingPage} />
+            <Route path="/lobby" component={LandingPage} />
+
+            {/* Room-Specific URLs with room code in the URL */}
+            <Route path="/room/:roomCode" component={RoomDashboard} />
+            <Route path="/room/:roomCode/auction" component={RoomAuction} />
+            <Route path="/room/:roomCode/leaderboard" component={RoomDashboard} />
+            <Route path="/t/:roomCode" component={RoomDashboard} />
+            <Route path="/t/:roomCode/auction" component={RoomAuction} />
+
+            {/* General Dashboard & Views */}
+            <Route path="/dashboard">
+              <RoomAccessGuard>
+                <ElementLight />
+              </RoomAccessGuard>
+            </Route>
+            <Route path="/overview">
+              <RoomAccessGuard>
+                <ElementLight />
+              </RoomAccessGuard>
+            </Route>
+            <Route path="/public">
+              <RoomAccessGuard>
+                <ElementLight />
+              </RoomAccessGuard>
+            </Route>
+            <Route path="/leaderboard">
+              <RoomAccessGuard>
+                <ElementLight />
+              </RoomAccessGuard>
+            </Route>
+            <Route path="/team">
+              <RoomAccessGuard>
+                <TeamsListing />
+              </RoomAccessGuard>
+            </Route>
+            <Route path="/team/:teamId/playing-xi">
+              <RoomAccessGuard>
+                <PlayingXI />
+              </RoomAccessGuard>
+            </Route>
+            <Route path="/team/:teamId">
+              <RoomAccessGuard>
+                <TeamDashboard />
+              </RoomAccessGuard>
+            </Route>
             <Route path="/login" component={LoginPage} />
 
-            {/* Protected: Auction (admin + auctioneer) */}
+            {/* Protected: Auction (admin only) */}
             <Route path="/auction">
-              <ProtectedRoute requiredRole="auctioneer">
+              <ProtectedRoute requiredRole="admin">
                 <AuctionPage />
               </ProtectedRoute>
             </Route>
@@ -86,6 +181,16 @@ function Router() {
             <Route path="/admin">
               <ProtectedRoute requiredRole="admin">
                 <AdminDashboard />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/admin/tournaments">
+              <ProtectedRoute requiredRole="admin">
+                <AdminTournaments />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/admin/rooms">
+              <ProtectedRoute requiredRole="admin">
+                <AdminTournaments />
               </ProtectedRoute>
             </Route>
             <Route path="/admin/players">
@@ -126,10 +231,12 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
+        <TournamentProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Router />
+          </TooltipProvider>
+        </TournamentProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

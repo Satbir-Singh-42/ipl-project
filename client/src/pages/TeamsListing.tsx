@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useIPLData } from '@/hooks/useIPLData';
 import { LoadingPage } from '@/components/LoadingPage';
 import { supabaseService, type Team } from '@/services/supabaseService';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Shield } from 'lucide-react';
 import { formatIndianNumber } from '@/lib/utils';
 
 // Team Logo component
@@ -89,8 +89,14 @@ export const TeamsListing = () => {
 
         {/* Teams Grid */}
         {teamConfigs.length === 0 ? (
-          <div className="flex items-center justify-center h-32">
-            <div className="text-wwwiplt-2-0comwhite text-lg">Loading teams...</div>
+          <div className="flex flex-col items-center justify-center py-20 text-center max-w-md mx-auto">
+            <div className="w-14 h-14 rounded-2xl bg-[#18184a] border border-white/10 flex items-center justify-center text-[#fe6804] mb-3 shadow-lg">
+              <Shield className="w-7 h-7 opacity-80" />
+            </div>
+            <h3 className="text-lg font-bold text-white mb-1">No Teams Registered Yet</h3>
+            <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
+              There are currently no franchise teams participating in this tournament room.
+            </p>
           </div>
         ) : (
           <main className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-4 sm:gap-6 content-start">

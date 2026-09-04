@@ -1,5 +1,6 @@
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTournament } from "@/contexts/TournamentContext";
 import { Button } from "@/components/ui/button";
 
 interface AdminHeaderProps {
@@ -11,6 +12,14 @@ interface AdminHeaderProps {
 export function AdminHeader({ activeTab, title, children }: AdminHeaderProps) {
   const [, setLocation] = useLocation();
   const { logout, user, role, displayName } = useAuth();
+  const { currentTournament } = useTournament();
+
+  const publicHref = currentTournament?.room_code
+    ? `/room/${currentTournament.room_code}`
+    : "/";
+  const auctionHref = currentTournament?.room_code
+    ? `/room/${currentTournament.room_code}/auction`
+    : "/auction";
 
   const navItems: {
     id: string;
@@ -18,23 +27,16 @@ export function AdminHeader({ activeTab, title, children }: AdminHeaderProps) {
     shortLabel?: string;
     href: string;
     isExternal: boolean;
-  }[] =
-    role === "auctioneer"
-      ? [
-        { id: "auction", label: "AUCTION", href: "/auction", isExternal: false },
-        { id: "leaderboard", label: "LEADERBOARD", shortLabel: "LEADERBOARD", href: "/admin/leaderboard", isExternal: false },
-        { id: "public", label: "PUBLIC VIEW", shortLabel: "PUBLIC", href: "/", isExternal: false },
-      ]
-      : [
-        { id: "dashboard", label: "DASHBOARD", shortLabel: "DASHBOARD", href: "/admin", isExternal: false },
-        { id: "players", label: "MANAGE PLAYERS", shortLabel: "PLAYERS", href: "/admin/players", isExternal: false },
-        { id: "teams", label: "MANAGE TEAMS", shortLabel: "TEAMS", href: "/admin/teams", isExternal: false },
-        { id: "pools", label: "SETS & POOLS", shortLabel: "POOLS", href: "/admin/pools", isExternal: false },
-        { id: "leaderboard", label: "LEADERBOARD", shortLabel: "LEADERBOARD", href: "/admin/leaderboard", isExternal: false },
-        { id: "export", label: "EXPORT DATA", shortLabel: "EXPORT", href: "/admin/export", isExternal: false },
-        { id: "auction", label: "AUCTION", shortLabel: "AUCTION", href: "/auction", isExternal: true },
-        { id: "public", label: "PUBLIC VIEW", shortLabel: "PUBLIC", href: "/", isExternal: false },
-      ];
+  }[] = [
+    { id: "dashboard", label: "DASHBOARD", shortLabel: "DASHBOARD", href: "/admin", isExternal: false },
+    { id: "players", label: "MANAGE PLAYERS", shortLabel: "PLAYERS", href: "/admin/players", isExternal: false },
+    { id: "teams", label: "MANAGE TEAMS", shortLabel: "TEAMS", href: "/admin/teams", isExternal: false },
+    { id: "pools", label: "SETS & POOLS", shortLabel: "POOLS", href: "/admin/pools", isExternal: false },
+    { id: "leaderboard", label: "LEADERBOARD", shortLabel: "LEADERBOARD", href: "/admin/leaderboard", isExternal: false },
+    { id: "export", label: "EXPORT DATA", shortLabel: "EXPORT", href: "/admin/export", isExternal: false },
+    { id: "auction", label: "AUCTION", shortLabel: "AUCTION", href: auctionHref, isExternal: true },
+    { id: "public", label: "PUBLIC VIEW", shortLabel: "PUBLIC", href: publicHref, isExternal: false },
+  ];
 
   return (
     <header

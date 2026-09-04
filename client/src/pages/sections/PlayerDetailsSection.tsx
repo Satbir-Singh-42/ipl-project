@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useIPLData } from "@/hooks/useIPLData";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTournament } from "@/contexts/TournamentContext";
 import { PlayerTable } from "@/components/PlayerTable";
 import { LeaderboardView } from "@/components/LeaderboardView";
 import { GuidelinesView } from "@/components/GuidelinesView";
@@ -14,8 +15,8 @@ import { TEAM_CARD_CONFIG } from "@shared/config";
 
 const navigationTabs = [
   { id: "overview", label: "OVERVIEW", isExternal: false },
+  { id: "auction-players", label: "AUCTION PLAYERS", isExternal: false },
   { id: "sold", label: "SOLD PLAYERS", isExternal: false },
-  { id: "unsold", label: "UNSOLD PLAYERS", isExternal: false },
   { id: "leaderboard", label: "LEADERBOARD", isExternal: false },
   { id: "guidelines", label: "GUIDELINES", isExternal: false },
   { id: "auction", label: "AUCTION", isExternal: true },
@@ -70,6 +71,7 @@ export const PlayerDetailsSection = (): JSX.Element => {
   });
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const { isAuthenticated, role, logout } = useAuth();
+  const { currentTournament } = useTournament();
   const {
     teamStats,
     players,
@@ -81,19 +83,23 @@ export const PlayerDetailsSection = (): JSX.Element => {
   } = useIPLData();
 
   const navigationTabsList = React.useMemo(() => {
+    const auctionHref = currentTournament?.room_code
+      ? `/room/${currentTournament.room_code}/auction`
+      : "/auction";
+
     const list = [
       { id: "overview", label: "OVERVIEW", shortLabel: "OVERVIEW", isExternal: false, href: "" },
+      { id: "auction-players", label: "AUCTION PLAYERS", shortLabel: "PLAYERS", isExternal: false, href: "" },
       { id: "sold", label: "SOLD PLAYERS", shortLabel: "SOLD", isExternal: false, href: "" },
-      { id: "unsold", label: "UNSOLD PLAYERS", shortLabel: "UNSOLD", isExternal: false, href: "" },
       { id: "leaderboard", label: "LEADERBOARD", shortLabel: "LEADERBOARD", isExternal: false, href: "" },
       { id: "guidelines", label: "GUIDELINES", shortLabel: "GUIDELINES", isExternal: false, href: "" },
-      { id: "auction", label: "AUCTION", shortLabel: "AUCTION", isExternal: true, href: "/auction" },
+      { id: "auction", label: "AUCTION", shortLabel: "AUCTION", isExternal: true, href: auctionHref },
     ];
     if (isAuthenticated && role === "admin") {
       list.push({ id: "admin", label: "ADMIN PANEL", shortLabel: "ADMIN", isExternal: true, href: "/admin" });
     }
     return list;
-  }, [isAuthenticated, role]);
+  }, [isAuthenticated, role, currentTournament]);
 
   // Call all hooks unconditionally at the top level
   const { data: unsoldPlayers, isLoading: loadingUnsold } = getUnsoldPlayers();
@@ -121,8 +127,9 @@ export const PlayerDetailsSection = (): JSX.Element => {
     switch (activeTab) {
       case "sold":
         return !players && isLoading; // Only show if no cached data exists
+      case "auction-players":
       case "unsold":
-        return !unsoldPlayers && loadingUnsold; // Only show if no cached data exists
+        return !players && isLoading;
       case "leaderboard":
         return !leaderboard && isLoading; // Only show if no cached data exists
       default: // overview
@@ -190,27 +197,21 @@ export const PlayerDetailsSection = (): JSX.Element => {
           />
         );
 
+      case "auction-players":
       case "unsold":
-        if (loadingUnsold) {
-          return (
-            <div className="text-wwwiplt-2-0comwhite">
-              Loading unsold players...
-            </div>
-          );
-        }
-        // Ensure only truly unsold players are shown here
-        const confirmedUnsoldPlayers = (unsoldPlayers || []).filter(
-          (p) => p.status === "unsold"
+        // Show all players currently in the auction pool (non-sold players: available, upcoming, unsold)
+        const auctionPoolPlayers = (players || []).filter(
+          (p) => p.status !== "sold"
         );
         return (
           <PlayerTable
-            players={confirmedUnsoldPlayers}
-            title="Unsold Players"
+            players={auctionPoolPlayers}
+            title="Auction Players"
             showTeam={false}
             showTeamFilter={false}
             defaultSortField="sheetOrder"
             defaultSortDirection="asc"
-            showPoints={false}
+            showPoints={true}
             showFinalBidPrice={false}
           />
         );
@@ -352,10 +353,16 @@ export const PlayerDetailsSection = (): JSX.Element => {
             <div className="flex items-center gap-2">
               <h1
                 className="[font-family:'Work_Sans',Helvetica] font-bold text-sm sm:text-base md:text-lg lg:text-xl 2xl:text-2xl leading-tight tracking-[0] cursor-pointer whitespace-nowrap shrink-0"
-                data-testid="text-title">
+                data-testid="text-title"
+                onClick={() => setLocation("/")}>
                 <span className="text-white"> IPL 2025 </span>
                 <span className="text-[#fe6804]">Player Auction</span>
               </h1>
+              {currentTournament?.room_code && (
+                <span className="hidden sm:inline-block bg-white/10 text-[#00bcd4] border border-[#00bcd4]/30 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
+                  #{currentTournament.room_code}
+                </span>
+              )}
             </div>
 
             {/* Navigation */}

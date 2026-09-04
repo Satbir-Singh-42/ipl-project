@@ -4,17 +4,21 @@ import {
   type TeamStats,
   type Player,
 } from "@/services/supabaseService";
+import { useTournament } from "@/contexts/TournamentContext";
 import { DATA_SYNC_CONFIG } from "@shared/config";
 
-export const useIPLData = () => {
+export const useIPLData = (tournamentId?: number) => {
+  const { currentTournament, activeTournamentId } = useTournament();
+  const tId = tournamentId ?? activeTournamentId ?? currentTournament?.id ?? supabaseService.getActiveTournamentId();
+
   const {
     data: teamStats,
     isLoading: isLoadingTeams,
     error: teamsError,
     refetch: refetchTeams,
   } = useQuery({
-    queryKey: ["teamStats"],
-    queryFn: () => supabaseService.getTeamStats(),
+    queryKey: ["teamStats", tId],
+    queryFn: () => supabaseService.getTeamStats(tId),
     refetchInterval: DATA_SYNC_CONFIG.homeRefreshInterval,
     staleTime: DATA_SYNC_CONFIG.cacheTime,
   });
@@ -25,8 +29,8 @@ export const useIPLData = () => {
     error: playersError,
     refetch: refetchPlayers,
   } = useQuery({
-    queryKey: ["players"],
-    queryFn: () => supabaseService.getPlayers(),
+    queryKey: ["players", tId],
+    queryFn: () => supabaseService.getPlayers(tId),
     refetchInterval: DATA_SYNC_CONFIG.homeRefreshInterval,
     staleTime: DATA_SYNC_CONFIG.cacheTime,
   });
@@ -37,16 +41,16 @@ export const useIPLData = () => {
     error: leaderboardError,
     refetch: refetchLeaderboard,
   } = useQuery({
-    queryKey: ["leaderboard"],
-    queryFn: () => supabaseService.getLeaderboard(),
+    queryKey: ["leaderboard", tId],
+    queryFn: () => supabaseService.getLeaderboard(tId),
     refetchInterval: DATA_SYNC_CONFIG.homeRefreshInterval,
     staleTime: DATA_SYNC_CONFIG.cacheTime,
   });
 
   const getSoldPlayersByTeam = (teamId: string) => {
     return useQuery({
-      queryKey: ["soldPlayers", teamId],
-      queryFn: () => supabaseService.getSoldPlayersByTeam(teamId),
+      queryKey: ["soldPlayers", tId, teamId],
+      queryFn: () => supabaseService.getSoldPlayersByTeam(teamId, tId),
       enabled: !!teamId,
       refetchInterval: DATA_SYNC_CONFIG.homeRefreshInterval,
       staleTime: DATA_SYNC_CONFIG.cacheTime,
@@ -55,8 +59,8 @@ export const useIPLData = () => {
 
   const getUnsoldPlayers = () => {
     return useQuery({
-      queryKey: ["unsoldPlayers"],
-      queryFn: () => supabaseService.getUnsoldPlayers(),
+      queryKey: ["unsoldPlayers", tId],
+      queryFn: () => supabaseService.getUnsoldPlayers(tId),
       refetchInterval: DATA_SYNC_CONFIG.homeRefreshInterval,
       staleTime: DATA_SYNC_CONFIG.cacheTime,
     });

@@ -6,6 +6,24 @@ import {
 } from "@/config/teamBranding";
 
 // Re-export the same interfaces used by all consumers
+export interface Tournament {
+  id: number;
+  name: string;
+  slug: string;
+  room_code: string;
+  description?: string;
+  currency_symbol?: string;
+  currency_code?: string;
+  banner_url?: string | null;
+  logo_url?: string | null;
+  is_locked?: boolean;
+  is_private?: boolean;
+  room_password?: string;
+  admin_password?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface Player {
   name: string;
   team: string;
@@ -28,10 +46,12 @@ export interface Player {
   economy?: number;
   poolId?: number | null;
   auctionOrder?: number;
+  tournamentId?: number;
 }
 
 export interface Pool {
   id: number;
+  tournamentId?: number;
   name: string;
   orderIndex: number;
   playerCount?: number;
@@ -51,6 +71,7 @@ export interface Team {
   totalSpent?: number;
   borderColor?: string;
   bgGradient?: string;
+  tournamentId?: number;
 }
 
 export interface LeaderboardTeam {
@@ -81,6 +102,7 @@ export interface TeamStats {
 // Raw DB row types
 interface DBPool {
   id: number;
+  tournament_id?: number;
   name: string;
   order_index: number;
   created_at: string;
@@ -89,6 +111,7 @@ interface DBPool {
 
 interface DBPlayer {
   id: number;
+  tournament_id?: number;
   name: string;
   age: number | null;
   country: string | null;
@@ -111,6 +134,7 @@ interface DBPlayer {
 
 interface DBTeam {
   id: number;
+  tournament_id?: number;
   name: string;
   slug: string;
   logo_url: string | null;
@@ -119,7 +143,358 @@ interface DBTeam {
   starting_budget: number;
 }
 
+const ACTIVE_TOURNAMENT_KEY = "ipl_active_tournament_id";
+
 class SupabaseService {
+  private activeTournamentId: number = 1;
+
+  constructor() {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem(ACTIVE_TOURNAMENT_KEY);
+      if (stored) {
+        const parsed = parseInt(stored, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          this.activeTournamentId = parsed;
+        }
+      }
+    }
+  }
+
+  getActiveTournamentId(): number {
+    return this.activeTournamentId;
+  }
+
+  setActiveTournamentId(id: number): void {
+    if (!id || isNaN(id)) return;
+    this.activeTournamentId = id;
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(ACTIVE_TOURNAMENT_KEY, String(id));
+        window.dispatchEvent(
+          new CustomEvent("ipl_tournament_changed", { detail: { tournamentId: id } }),
+        );
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  // ─── TOURNAMENT MANAGEMENT (Multi-Tenancy) ───
+
+  async getTournaments(): Promise<Tournament[]> {
+    const { data, error } = await supabase
+      .from("tournaments")
+      .select("id, name, slug, room_code, description, currency_symbol, currency_code, banner_url, logo_url, is_locked, is_private, created_at, updated_at")
+      .order("id", { ascending: true });
+
+    if (error) {
+      console.error("Failed to fetch tournaments:", error.message);
+      return [
+        {
+          id: 1,
+          name: "IPL 2025 Mega Auction",
+          slug: "ipl-2025",
+          room_code: "IPL2025",
+          description: "Official IPL 2025 Mega Player Auction",
+          currency_symbol: "₹",
+          currency_code: "INR",
+        },
+      ];
+    }
+    return data || [];
+  }
+
+  async getTournamentById(id: number): Promise<Tournament | null> {
+    const { data, error } = await supabase
+      .from("tournaments")
+      .select("id, name, slug, room_code, description, currency_symbol, currency_code, banner_url, logo_url, is_locked, is_private, created_at, updated_at")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return data as Tournament;
+  }
+
+  async getTournamentBySlugOrCode(identifier: string): Promise<Tournament | null> {
+    const clean = identifier.trim();
+    if (!clean) return null;
+
+    const { data, error } = await supabase
+      .from("tournaments")
+      .select("id, name, slug, room_code, description, currency_symbol, currency_code, banner_url, logo_url, is_locked, is_private, created_at, updated_at")
+      .or(`slug.eq.${clean.toLowerCase()},room_code.eq.${clean.toUpperCase()},room_code.eq.${clean}`)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return data as Tournament;
+  }
+
+  async verifyRoomPassword(tournamentId: number, passwordInput: string): Promise<boolean> {
+    const cleanPass = passwordInput.trim();
+    if (!cleanPass) return false;
+
+    try {
+      const { data, error } = await supabase
+        .from("tournaments")
+        .select("id, room_password, admin_password")
+        .eq("id", tournamentId)
+        .maybeSingle();
+
+      if (error || !data) return false;
+      const roomPass = data.room_password?.trim() || "";
+      const adminPass = data.admin_password?.trim() || "";
+
+      return (
+        (roomPass !== "" && cleanPass === roomPass) ||
+        (adminPass !== "" && cleanPass === adminPass) ||
+        (tournamentId === 1 && cleanPass === "admin123")
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  async verifyRoomAdminCredentials(identifier: string, passwordInput: string): Promise<{ success: boolean; tournament?: Tournament }> {
+    const cleanId = identifier.trim();
+    const cleanPass = passwordInput.trim();
+    if (!cleanId || !cleanPass) return { success: false };
+
+    try {
+      const { data, error } = await supabase
+        .from("tournaments")
+        .select("id, name, slug, room_code, admin_password, currency_symbol, currency_code, description, is_private")
+        .or(`room_code.ilike.${cleanId},slug.ilike.${cleanId}`)
+        .maybeSingle();
+
+      if (error || !data) return { success: false };
+      const expectedPass = data.admin_password?.trim() || (data.id === 1 ? "admin123" : "");
+
+      if (expectedPass !== "" && cleanPass === expectedPass) {
+        return {
+          success: true,
+          tournament: {
+            id: data.id,
+            name: data.name,
+            slug: data.slug,
+            room_code: data.room_code,
+            currency_symbol: data.currency_symbol,
+            currency_code: data.currency_code,
+            description: data.description,
+            is_private: data.is_private,
+          },
+        };
+      }
+      return { success: false };
+    } catch {
+      return { success: false };
+    }
+  }
+
+  async getMultiTournamentSummaryStats(): Promise<Record<number, { teamsCount: number; playersCount: number; poolsCount: number }>> {
+    try {
+      const [teamsRes, playersRes, poolsRes] = await Promise.all([
+        supabase.from("teams").select("tournament_id"),
+        supabase.from("players").select("tournament_id"),
+        supabase.from("pools").select("tournament_id"),
+      ]);
+
+      const statsMap: Record<number, { teamsCount: number; playersCount: number; poolsCount: number }> = {};
+
+      const countMap = (list: { tournament_id: number | null }[] | null, key: "teamsCount" | "playersCount" | "poolsCount") => {
+        if (!list) return;
+        for (const item of list) {
+          const tId = item.tournament_id ?? 1;
+          if (!statsMap[tId]) {
+            statsMap[tId] = { teamsCount: 0, playersCount: 0, poolsCount: 0 };
+          }
+          statsMap[tId][key] += 1;
+        }
+      };
+
+      countMap(teamsRes.data, "teamsCount");
+      countMap(playersRes.data, "playersCount");
+      countMap(poolsRes.data, "poolsCount");
+
+      return statsMap;
+    } catch {
+      return {};
+    }
+  }
+
+  async createTournament(tournament: {
+    name: string;
+    slug?: string;
+    room_code?: string;
+    description?: string;
+    currency_symbol?: string;
+    currency_code?: string;
+    banner_url?: string;
+    logo_url?: string;
+    is_private?: boolean;
+    room_password?: string;
+    admin_password?: string;
+  }): Promise<Tournament> {
+    const name = tournament.name.trim();
+    if (!name) {
+      throw new Error("Tournament name is required.");
+    }
+
+    // 1. Check for duplicate name (case-insensitive)
+    const { data: existingByName } = await supabase
+      .from("tournaments")
+      .select("id, name")
+      .ilike("name", name)
+      .maybeSingle();
+
+    if (existingByName) {
+      throw new Error(`A tournament named "${existingByName.name}" already exists. Please choose a unique tournament name.`);
+    }
+
+    // 2. Validate and disambiguate URL Slug
+    let slug =
+      tournament.slug && tournament.slug.trim()
+        ? tournament.slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")
+        : name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+    if (!slug) {
+      slug = `tournament-${Date.now().toString(36)}`;
+    }
+
+    const { data: existingBySlug } = await supabase
+      .from("tournaments")
+      .select("id, slug")
+      .eq("slug", slug)
+      .maybeSingle();
+
+    if (existingBySlug) {
+      if (tournament.slug && tournament.slug.trim()) {
+        throw new Error(`URL slug "${slug}" is already taken. Please specify a different slug.`);
+      } else {
+        slug = `${slug}-${Date.now().toString(36).slice(-4)}`;
+      }
+    }
+
+    // 3. Validate and ensure unique Room Code
+    let roomCode =
+      tournament.room_code && tournament.room_code.trim()
+        ? tournament.room_code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "")
+        : "";
+
+    if (roomCode) {
+      const { data: existingByCode } = await supabase
+        .from("tournaments")
+        .select("id, room_code")
+        .eq("room_code", roomCode)
+        .maybeSingle();
+
+      if (existingByCode) {
+        throw new Error(`Room code "${roomCode}" is already in use. Please enter a different room code.`);
+      }
+    } else {
+      // Auto-generate a guaranteed unique room code
+      let isUnique = false;
+      let attempts = 0;
+      while (!isUnique && attempts < 10) {
+        attempts++;
+        const candidate = Math.random().toString(36).substring(2, 8).toUpperCase();
+        const { data: existing } = await supabase
+          .from("tournaments")
+          .select("id")
+          .eq("room_code", candidate)
+          .maybeSingle();
+        if (!existing) {
+          roomCode = candidate;
+          isUnique = true;
+        }
+      }
+      if (!roomCode) {
+        roomCode = `R${Date.now().toString(36).toUpperCase().slice(-5)}`;
+      }
+    }
+
+    const { data, error } = await supabase
+      .from("tournaments")
+      .insert({
+        name,
+        slug,
+        room_code: roomCode,
+        description: tournament.description?.trim() || "",
+        currency_symbol: tournament.currency_symbol?.trim() || "₹",
+        currency_code: tournament.currency_code?.trim() || "INR",
+        banner_url: tournament.banner_url || null,
+        logo_url: tournament.logo_url || null,
+        is_private: tournament.is_private || false,
+        room_password: tournament.room_password?.trim() || "",
+        admin_password: tournament.admin_password?.trim() || "admin123",
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to create tournament room: ${error.message}`);
+
+    // Create default auction_settings for the new tournament
+    await supabase.from("auction_settings").insert({
+      tournament_id: data.id,
+      starting_budget: 10000000,
+      max_players: 15,
+      min_players: 11,
+      max_overseas: 7,
+      min_indians: 8,
+      playing_xi_total: 11,
+      playing_xi_max_overseas: 4,
+      batsmen_min: 2,
+      batsmen_max: 5,
+      wk_min: 1,
+      wk_max: 3,
+      all_rounders_min: 1,
+      bowlers_min: 2,
+      enable_captain_multiplier: true,
+      captain_multiplier: 2.0,
+      vice_captain_multiplier: 1.5,
+      bid_increment: 100000,
+      default_base_price: 400000,
+      teams_qualifying: 8,
+    });
+
+    return data as Tournament;
+  }
+
+  async updateTournament(
+    id: number,
+    updates: Partial<Tournament>,
+  ): Promise<void> {
+    const { error } = await supabase
+      .from("tournaments")
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+
+    if (error) throw new Error(`Failed to update tournament: ${error.message}`);
+  }
+
+  async deleteTournament(id: number): Promise<void> {
+    if (id === 1) {
+      throw new Error("Default IPL 2025 tournament room cannot be deleted.");
+    }
+    // Cascade delete dependent records to prevent foreign key errors
+    await Promise.allSettled([
+      supabase.from("playing_xi").delete().eq("tournament_id", id),
+      supabase.from("auction_log").delete().eq("tournament_id", id),
+      supabase.from("auction_settings").delete().eq("tournament_id", id),
+      supabase.from("players").delete().eq("tournament_id", id),
+      supabase.from("teams").delete().eq("tournament_id", id),
+      supabase.from("pools").delete().eq("tournament_id", id),
+    ]);
+
+    const { error } = await supabase.from("tournaments").delete().eq("id", id);
+    if (error) throw new Error(`Failed to delete tournament room: ${error.message}`);
+    if (this.activeTournamentId === id) {
+      this.setActiveTournamentId(1);
+    }
+  }
+
   // Convert DB player row to the Player interface used by all UI components
   private toPlayer(row: DBPlayer, index: number): Player {
     const country = row.country || "India";
@@ -168,12 +543,131 @@ class SupabaseService {
       .replace(/[^a-z0-9-]/g, "");
   }
 
+  // ─── CLONING & TEMPLATE METHODS ───
+
+  async cloneTournamentStructure(
+    sourceTournamentId: number,
+    targetTournamentId: number,
+    options: {
+      copyTeams?: boolean;
+      copyPools?: boolean;
+      copyPlayers?: boolean;
+      copyRules?: boolean;
+    } = { copyTeams: true, copyPools: true, copyPlayers: false, copyRules: true },
+  ): Promise<void> {
+    if (options.copyRules) {
+      const { data: sourceRules } = await supabase
+        .from("auction_settings")
+        .select("*")
+        .eq("tournament_id", sourceTournamentId)
+        .maybeSingle();
+
+      if (sourceRules) {
+        const { id, created_at, updated_at, ...restRules } = sourceRules;
+        await supabase
+          .from("auction_settings")
+          .upsert(
+            { ...restRules, tournament_id: targetTournamentId },
+            { onConflict: "tournament_id" },
+          );
+      }
+    }
+
+    const poolIdMap = new Map<number, number>();
+
+    if (options.copyPools) {
+      const { data: sourcePools } = await supabase
+        .from("pools")
+        .select("*")
+        .eq("tournament_id", sourceTournamentId)
+        .order("order_index", { ascending: true });
+
+      if (sourcePools && sourcePools.length > 0) {
+        for (const pool of sourcePools) {
+          const { data: newPool } = await supabase
+            .from("pools")
+            .insert({
+              tournament_id: targetTournamentId,
+              name: pool.name,
+              order_index: pool.order_index,
+            })
+            .select("id")
+            .single();
+
+          if (newPool) {
+            poolIdMap.set(pool.id, newPool.id);
+          }
+        }
+      }
+    }
+
+    if (options.copyTeams) {
+      const { data: sourceTeams } = await supabase
+        .from("teams")
+        .select("*")
+        .eq("tournament_id", sourceTournamentId);
+
+      if (sourceTeams && sourceTeams.length > 0) {
+        const teamsToInsert = sourceTeams.map((t: DBTeam) => ({
+          tournament_id: targetTournamentId,
+          name: t.name,
+          slug: t.slug,
+          logo_url: t.logo_url,
+          border_color: t.border_color,
+          bg_gradient: t.bg_gradient,
+          starting_budget: t.starting_budget,
+        }));
+        await supabase.from("teams").insert(teamsToInsert);
+      }
+    }
+
+    if (options.copyPlayers) {
+      const { data: sourcePlayers } = await supabase
+        .from("players")
+        .select("*")
+        .eq("tournament_id", sourceTournamentId);
+
+      if (sourcePlayers && sourcePlayers.length > 0) {
+        const playersToInsert = sourcePlayers.map((p: DBPlayer) => ({
+          tournament_id: targetTournamentId,
+          name: p.name,
+          age: p.age,
+          country: p.country,
+          t20_matches: p.t20_matches,
+          runs: p.runs,
+          batting_sr: p.batting_sr,
+          wickets: p.wickets,
+          economy: p.economy,
+          eval_points: p.eval_points,
+          base_price: p.base_price,
+          role: p.role,
+          image_url: p.image_url,
+          status: "pending",
+          sold_price: 0,
+          sold_to_team: null,
+          pool_id: p.pool_id ? poolIdMap.get(p.pool_id) || null : null,
+          auction_order: p.auction_order || 0,
+        }));
+        await supabase.from("players").insert(playersToInsert);
+      }
+    }
+  }
+
   // ─── READ METHODS ───
 
-  async getPlayers(): Promise<Player[]> {
+  async getPlayers(tournamentId?: number): Promise<Player[]> {
+    const tId = tournamentId ?? this.activeTournamentId;
     const [playersRes, poolsRes] = await Promise.all([
-      supabase.from("players").select("*").order("id", { ascending: true }),
-      supabase.from("pools").select("id, order_index").order("order_index", { ascending: true }),
+      supabase
+        .from("players")
+        .select("*")
+        .eq("tournament_id", tId)
+        .order("id", { ascending: true }),
+      supabase
+        .from("pools")
+        .select("id, order_index")
+        .eq("tournament_id", tId)
+        .order("order_index", { ascending: true }),
     ]);
 
     if (playersRes.error) {
@@ -206,10 +700,12 @@ class SupabaseService {
     });
   }
 
-  async getTeamStats(): Promise<TeamStats[]> {
+  async getTeamStats(tournamentId?: number): Promise<TeamStats[]> {
+    const tId = tournamentId ?? this.activeTournamentId;
     const { data: teamsData, error: teamsError } = await supabase
       .from("teams")
       .select("*")
+      .eq("tournament_id", tId)
       .order("name", { ascending: true });
 
     if (teamsError || !teamsData) {
@@ -217,7 +713,7 @@ class SupabaseService {
       return [];
     }
 
-    const players = await this.getPlayers();
+    const players = await this.getPlayers(tId);
 
     return teamsData.map((team: DBTeam) => {
       const teamSlug = team.slug;
@@ -257,8 +753,9 @@ class SupabaseService {
     });
   }
 
-  async getLeaderboard(): Promise<TeamStats[]> {
-    const teamStats = await this.getTeamStats();
+  async getLeaderboard(tournamentId?: number): Promise<TeamStats[]> {
+    const tId = tournamentId ?? this.activeTournamentId;
+    const teamStats = await this.getTeamStats(tId);
     return teamStats.sort((a, b) => {
       if (a.totalPoints !== b.totalPoints) {
         return b.totalPoints - a.totalPoints;
@@ -270,9 +767,10 @@ class SupabaseService {
     });
   }
 
-  async getSoldPlayersByTeam(teamId: string): Promise<Player[]> {
-    const players = await this.getPlayers();
-    const teamConfigs = await this.getTeamConfigs();
+  async getSoldPlayersByTeam(teamId: string, tournamentId?: number): Promise<Player[]> {
+    const tId = tournamentId ?? this.activeTournamentId;
+    const players = await this.getPlayers(tId);
+    const teamConfigs = await this.getTeamConfigs(tId);
     const team = teamConfigs.find((t: Team) => t.id === teamId);
 
     if (!team) return [];
@@ -285,19 +783,22 @@ class SupabaseService {
     );
   }
 
-  async getUnsoldPlayers(): Promise<Player[]> {
-    const players = await this.getPlayers();
+  async getUnsoldPlayers(tournamentId?: number): Promise<Player[]> {
+    const tId = tournamentId ?? this.activeTournamentId;
+    const players = await this.getPlayers(tId);
     return players.filter((p) => p.status === "unsold");
   }
 
-  async getTeamConfigs(): Promise<Team[]> {
+  async getTeamConfigs(tournamentId?: number): Promise<Team[]> {
+    const tId = tournamentId ?? this.activeTournamentId;
     // Fetch raw teams from DB to get branding columns
     const { data: teamsData } = await supabase
       .from("teams")
       .select("*")
+      .eq("tournament_id", tId)
       .order("name", { ascending: true });
 
-    const teamStats = await this.getTeamStats();
+    const teamStats = await this.getTeamStats(tId);
 
     return teamStats.map((stat) => {
       // Find the DB row for this team to get logo/border/gradient
@@ -314,6 +815,7 @@ class SupabaseService {
         totalPlayers: stat.playersCount,
         borderColor: dbTeam?.border_color || this.getTeamBorderColor(stat.teamName),
         bgGradient: dbTeam?.bg_gradient || this.getTeamGradient(stat.teamName),
+        tournamentId: tId,
       };
     });
   }
@@ -323,13 +825,15 @@ class SupabaseService {
     // No-op: Supabase handles caching via React Query
   }
 
-  // ─── WRITE METHODS (new -- for auction + admin) ───
+  // ─── WRITE METHODS (for auction + admin) ───
 
   async markPlayerSold(
     playerName: string,
     teamName: string,
     price: number,
+    tournamentId?: number,
   ): Promise<void> {
+    const tId = tournamentId ?? this.activeTournamentId;
     const { error } = await supabase
       .from("players")
       .update({
@@ -338,7 +842,8 @@ class SupabaseService {
         sold_to_team: teamName,
         sold_at: new Date().toISOString(),
       })
-      .eq("name", playerName);
+      .eq("name", playerName)
+      .eq("tournament_id", tId);
 
     if (error) throw new Error(`Failed to mark player sold: ${error.message}`);
 
@@ -347,9 +852,11 @@ class SupabaseService {
       .from("players")
       .select("id")
       .eq("name", playerName)
-      .single();
+      .eq("tournament_id", tId)
+      .maybeSingle();
 
     await supabase.from("auction_log").insert({
+      tournament_id: tId,
       player_id: playerRow?.id || null,
       player_name: playerName,
       team_name: teamName,
@@ -359,7 +866,8 @@ class SupabaseService {
     });
   }
 
-  async markPlayerUnsold(playerName: string): Promise<void> {
+  async markPlayerUnsold(playerName: string, tournamentId?: number): Promise<void> {
+    const tId = tournamentId ?? this.activeTournamentId;
     const { error } = await supabase
       .from("players")
       .update({
@@ -368,7 +876,8 @@ class SupabaseService {
         sold_to_team: null,
         sold_at: null,
       })
-      .eq("name", playerName);
+      .eq("name", playerName)
+      .eq("tournament_id", tId);
 
     if (error)
       throw new Error(`Failed to mark player unsold: ${error.message}`);
@@ -377,9 +886,11 @@ class SupabaseService {
       .from("players")
       .select("id")
       .eq("name", playerName)
-      .single();
+      .eq("tournament_id", tId)
+      .maybeSingle();
 
     await supabase.from("auction_log").insert({
+      tournament_id: tId,
       player_id: playerRow?.id || null,
       player_name: playerName,
       team_name: null,
@@ -389,7 +900,11 @@ class SupabaseService {
     });
   }
 
-  async returnPlayerToAvailable(playerNameOrId: string | number): Promise<void> {
+  async returnPlayerToAvailable(
+    playerNameOrId: string | number,
+    tournamentId?: number,
+  ): Promise<void> {
+    const tId = tournamentId ?? this.activeTournamentId;
     const isId = typeof playerNameOrId === "number";
 
     // 1. Update player status in players table to 'pending'
@@ -400,7 +915,8 @@ class SupabaseService {
         sold_price: 0,
         sold_to_team: null,
         sold_at: null,
-      });
+      })
+      .eq("tournament_id", tId);
 
     const { error } = isId
       ? await query.eq("id", playerNameOrId)
@@ -415,27 +931,40 @@ class SupabaseService {
           sold_price: 0,
           sold_to_team: null,
           sold_at: null,
-        });
+        })
+        .eq("tournament_id", tId);
       if (isId) await fallback.eq("id", playerNameOrId);
       else await fallback.eq("name", playerNameOrId);
     }
 
-    // 2. Remove all unsold and sold log entries for this player so logs and players remain in exact sync
+    // 2. Remove all unsold and sold log entries for this player in this tournament
     if (isId) {
-      await supabase.from("auction_log").delete().eq("player_id", playerNameOrId);
+      await supabase
+        .from("auction_log")
+        .delete()
+        .eq("tournament_id", tId)
+        .eq("player_id", playerNameOrId);
     } else {
-      await supabase.from("auction_log").delete().eq("player_name", playerNameOrId);
+      await supabase
+        .from("auction_log")
+        .delete()
+        .eq("tournament_id", tId)
+        .eq("player_name", playerNameOrId);
     }
   }
 
-  async undoLastAction(): Promise<{ playerName: string; action: string } | null> {
-    // Get the most recent auction log entry
+  async undoLastAction(
+    tournamentId?: number,
+  ): Promise<{ playerName: string; action: string } | null> {
+    const tId = tournamentId ?? this.activeTournamentId;
+    // Get the most recent auction log entry for this tournament
     const { data: lastLog } = await supabase
       .from("auction_log")
       .select("*")
+      .eq("tournament_id", tId)
       .order("created_at", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (!lastLog) return null;
 
@@ -449,6 +978,7 @@ class SupabaseService {
           sold_to_team: null,
           sold_at: null,
         })
+        .eq("tournament_id", tId)
         .eq("name", lastLog.player_name);
 
       // Remove the sold log
@@ -463,6 +993,7 @@ class SupabaseService {
           sold_to_team: null,
           sold_at: null,
         })
+        .eq("tournament_id", tId)
         .eq("name", lastLog.player_name);
 
       // Remove the unsold log entry so auction log and player status are in sync
@@ -477,19 +1008,26 @@ class SupabaseService {
 
   // ─── ADMIN METHODS ───
 
-  async addPlayer(player: Partial<DBPlayer>): Promise<void> {
-    const { error } = await supabase.from("players").insert(player);
+  async addPlayer(player: Partial<DBPlayer>, tournamentId?: number): Promise<void> {
+    const tId = tournamentId ?? player.tournament_id ?? this.activeTournamentId;
+    const { error } = await supabase.from("players").insert({
+      ...player,
+      tournament_id: tId,
+    });
     if (error) throw new Error(`Failed to add player: ${error.message}`);
   }
 
   async updatePlayer(
     id: number,
     data: Partial<DBPlayer>,
+    tournamentId?: number,
   ): Promise<void> {
+    const tId = tournamentId ?? this.activeTournamentId;
     const { error } = await supabase
       .from("players")
       .update(data)
-      .eq("id", id);
+      .eq("id", id)
+      .eq("tournament_id", tId);
     if (error) throw new Error(`Failed to update player: ${error.message}`);
 
     // If status is changed to pending or available, remove any unsold logs for this player
@@ -497,35 +1035,55 @@ class SupabaseService {
       await supabase
         .from("auction_log")
         .delete()
+        .eq("tournament_id", tId)
         .eq("player_id", id)
         .eq("action", "unsold");
     }
   }
 
-  async deletePlayer(id: number): Promise<void> {
+  async deletePlayer(id: number, tournamentId?: number): Promise<void> {
+    const tId = tournamentId ?? this.activeTournamentId;
     // Delete any auction_log entries referencing this player first
-    await supabase.from("auction_log").delete().eq("player_id", id);
+    await supabase
+      .from("auction_log")
+      .delete()
+      .eq("tournament_id", tId)
+      .eq("player_id", id);
     // Delete the player row from database
-    const { error } = await supabase.from("players").delete().eq("id", id);
+    const { error } = await supabase
+      .from("players")
+      .delete()
+      .eq("id", id)
+      .eq("tournament_id", tId);
     if (error) throw new Error(`Failed to delete player: ${error.message}`);
   }
 
-  async updateTeamBudget(teamSlug: string, budget: number): Promise<void> {
+  async updateTeamBudget(
+    teamSlug: string,
+    budget: number,
+    tournamentId?: number,
+  ): Promise<void> {
+    const tId = tournamentId ?? this.activeTournamentId;
     const { error } = await supabase
       .from("teams")
       .update({ starting_budget: budget })
-      .eq("slug", teamSlug);
+      .eq("slug", teamSlug)
+      .eq("tournament_id", tId);
     if (error) throw new Error(`Failed to update budget: ${error.message}`);
   }
 
-  async createTeam(team: {
-    name: string;
-    slug?: string;
-    logo_url?: string;
-    border_color?: string;
-    bg_gradient?: string;
-    starting_budget?: number;
-  }): Promise<void> {
+  async createTeam(
+    team: {
+      name: string;
+      slug?: string;
+      logo_url?: string;
+      border_color?: string;
+      bg_gradient?: string;
+      starting_budget?: number;
+    },
+    tournamentId?: number,
+  ): Promise<void> {
+    const tId = tournamentId ?? this.activeTournamentId;
     const slug =
       team.slug && team.slug.trim()
         ? team.slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")
@@ -535,6 +1093,7 @@ class SupabaseService {
             .replace(/(^-|-$)/g, "");
 
     const { error } = await supabase.from("teams").insert({
+      tournament_id: tId,
       name: team.name.trim(),
       slug,
       logo_url: team.logo_url || null,
@@ -557,20 +1116,25 @@ class SupabaseService {
       bg_gradient?: string;
       starting_budget?: number;
     },
+    tournamentId?: number,
   ): Promise<void> {
+    const tId = tournamentId ?? this.activeTournamentId;
     const { error } = await supabase
       .from("teams")
       .update(updates)
-      .eq("slug", slug);
+      .eq("slug", slug)
+      .eq("tournament_id", tId);
 
     if (error) throw new Error(`Failed to update team: ${error.message}`);
   }
 
-  async deleteTeam(slug: string): Promise<void> {
+  async deleteTeam(slug: string, tournamentId?: number): Promise<void> {
+    const tId = tournamentId ?? this.activeTournamentId;
     const { data: teamRow } = await supabase
       .from("teams")
       .select("name, slug")
       .eq("slug", slug)
+      .eq("tournament_id", tId)
       .maybeSingle();
 
     const teamName = teamRow?.name || slug;
@@ -584,13 +1148,29 @@ class SupabaseService {
         status: "pending",
         sold_at: null,
       })
+      .eq("tournament_id", tId)
       .or(`sold_to_team.eq.${slug},sold_to_team.eq.${teamName}`);
 
     // Clean up auction log for this team
-    await supabase.from("auction_log").delete().eq("team_name", teamName);
+    await supabase
+      .from("auction_log")
+      .delete()
+      .eq("tournament_id", tId)
+      .eq("team_name", teamName);
+
+    // Clean up playing xi for this team
+    await supabase
+      .from("playing_xi")
+      .delete()
+      .eq("tournament_id", tId)
+      .eq("team_slug", slug);
 
     // Delete team from database
-    const { error } = await supabase.from("teams").delete().eq("slug", slug);
+    const { error } = await supabase
+      .from("teams")
+      .delete()
+      .eq("slug", slug)
+      .eq("tournament_id", tId);
     if (error) throw new Error(`Failed to delete team: ${error.message}`);
   }
 
@@ -660,10 +1240,12 @@ class SupabaseService {
 
   // ─── POOLS & SETS MANAGEMENT ───
 
-  async getPools(): Promise<Pool[]> {
+  async getPools(tournamentId?: number): Promise<Pool[]> {
+    const tId = tournamentId ?? this.activeTournamentId;
     const { data: poolsData, error: poolsError } = await supabase
       .from("pools")
       .select("*")
+      .eq("tournament_id", tId)
       .order("order_index", { ascending: true });
 
     if (poolsError) {
@@ -671,10 +1253,11 @@ class SupabaseService {
       return [];
     }
 
-    // Get player counts per pool
+    // Get player counts per pool for this tournament
     const { data: playersData } = await supabase
       .from("players")
-      .select("pool_id");
+      .select("pool_id")
+      .eq("tournament_id", tId);
 
     const counts: Record<number, number> = {};
     (playersData || []).forEach((p: { pool_id: number | null }) => {
@@ -685,6 +1268,7 @@ class SupabaseService {
 
     return (poolsData || []).map((row: DBPool) => ({
       id: row.id,
+      tournamentId: tId,
       name: row.name,
       orderIndex: row.order_index,
       playerCount: counts[row.id] || 0,
@@ -693,12 +1277,14 @@ class SupabaseService {
     }));
   }
 
-  async createPool(name: string, orderIndex?: number): Promise<Pool> {
+  async createPool(name: string, orderIndex?: number, tournamentId?: number): Promise<Pool> {
+    const tId = tournamentId ?? this.activeTournamentId;
     let nextOrder = orderIndex;
     if (nextOrder === undefined) {
       const { data } = await supabase
         .from("pools")
         .select("order_index")
+        .eq("tournament_id", tId)
         .order("order_index", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -707,13 +1293,18 @@ class SupabaseService {
 
     const { data, error } = await supabase
       .from("pools")
-      .insert({ name: name.trim(), order_index: nextOrder })
+      .insert({
+        tournament_id: tId,
+        name: name.trim(),
+        order_index: nextOrder,
+      })
       .select()
       .single();
 
     if (error) throw new Error(`Failed to create pool: ${error.message}`);
     return {
       id: data.id,
+      tournamentId: tId,
       name: data.name,
       orderIndex: data.order_index,
       playerCount: 0,
@@ -723,30 +1314,47 @@ class SupabaseService {
   async updatePool(
     id: number,
     updates: { name?: string; orderIndex?: number },
+    tournamentId?: number,
   ): Promise<void> {
+    const tId = tournamentId ?? this.activeTournamentId;
     const payload: { name?: string; order_index?: number; updated_at?: string } = {
       updated_at: new Date().toISOString(),
     };
     if (updates.name !== undefined) payload.name = updates.name.trim();
     if (updates.orderIndex !== undefined) payload.order_index = updates.orderIndex;
 
-    const { error } = await supabase.from("pools").update(payload).eq("id", id);
+    const { error } = await supabase
+      .from("pools")
+      .update(payload)
+      .eq("id", id)
+      .eq("tournament_id", tId);
     if (error) throw new Error(`Failed to update pool: ${error.message}`);
   }
 
-  async deletePool(id: number): Promise<void> {
+  async deletePool(id: number, tournamentId?: number): Promise<void> {
+    const tId = tournamentId ?? this.activeTournamentId;
     // Unassign players first
-    await supabase.from("players").update({ pool_id: null, auction_order: 0 }).eq("pool_id", id);
-    const { error } = await supabase.from("pools").delete().eq("id", id);
+    await supabase
+      .from("players")
+      .update({ pool_id: null, auction_order: 0 })
+      .eq("pool_id", id)
+      .eq("tournament_id", tId);
+    const { error } = await supabase
+      .from("pools")
+      .delete()
+      .eq("id", id)
+      .eq("tournament_id", tId);
     if (error) throw new Error(`Failed to delete pool: ${error.message}`);
   }
 
-  async reorderPools(orderedPoolIds: number[]): Promise<void> {
+  async reorderPools(orderedPoolIds: number[], tournamentId?: number): Promise<void> {
+    const tId = tournamentId ?? this.activeTournamentId;
     for (let i = 0; i < orderedPoolIds.length; i++) {
       await supabase
         .from("pools")
         .update({ order_index: i + 1, updated_at: new Date().toISOString() })
-        .eq("id", orderedPoolIds[i]);
+        .eq("id", orderedPoolIds[i])
+        .eq("tournament_id", tId);
     }
   }
 
@@ -754,12 +1362,15 @@ class SupabaseService {
     playerId: number,
     poolId: number | null,
     auctionOrder?: number,
+    tournamentId?: number,
   ): Promise<void> {
+    const tId = tournamentId ?? this.activeTournamentId;
     let order = auctionOrder;
     if (order === undefined && poolId) {
       const { data } = await supabase
         .from("players")
         .select("auction_order")
+        .eq("tournament_id", tId)
         .eq("pool_id", poolId)
         .order("auction_order", { ascending: false })
         .limit(1)
@@ -773,7 +1384,8 @@ class SupabaseService {
         pool_id: poolId,
         auction_order: poolId ? (order ?? 1) : 0,
       })
-      .eq("id", playerId);
+      .eq("id", playerId)
+      .eq("tournament_id", tId);
 
     if (error) throw new Error(`Failed to assign player: ${error.message}`);
   }
@@ -781,16 +1393,20 @@ class SupabaseService {
   async reorderPlayersInPool(
     poolId: number | null,
     orderedPlayerIds: number[],
+    tournamentId?: number,
   ): Promise<void> {
+    const tId = tournamentId ?? this.activeTournamentId;
     for (let i = 0; i < orderedPlayerIds.length; i++) {
       await supabase
         .from("players")
         .update({ auction_order: i + 1 })
-        .eq("id", orderedPlayerIds[i]);
+        .eq("id", orderedPlayerIds[i])
+        .eq("tournament_id", tId);
     }
   }
 
-  async autoGroupByRole(): Promise<{ poolsCreated: number; playersAssigned: number }> {
+  async autoGroupByRole(tournamentId?: number): Promise<{ poolsCreated: number; playersAssigned: number }> {
+    const tId = tournamentId ?? this.activeTournamentId;
     const rolesConfig = [
       { name: "Set 1: Batsmen", role: "Batsman" },
       { name: "Set 2: Bowlers", role: "Bowler" },
@@ -806,6 +1422,7 @@ class SupabaseService {
       let { data: existingPool } = await supabase
         .from("pools")
         .select("id")
+        .eq("tournament_id", tId)
         .eq("name", name)
         .maybeSingle();
 
@@ -813,19 +1430,24 @@ class SupabaseService {
       if (!poolId) {
         const { data: newPool, error: createError } = await supabase
           .from("pools")
-          .insert({ name, order_index: i + 1 })
+          .insert({ tournament_id: tId, name, order_index: i + 1 })
           .select("id")
           .single();
         if (createError) throw new Error(`Failed to create set: ${createError.message}`);
         poolId = newPool.id;
         poolsCreated++;
       } else {
-        await supabase.from("pools").update({ order_index: i + 1 }).eq("id", poolId);
+        await supabase
+          .from("pools")
+          .update({ order_index: i + 1 })
+          .eq("id", poolId)
+          .eq("tournament_id", tId);
       }
 
       const { data: rolePlayers } = await supabase
         .from("players")
         .select("id")
+        .eq("tournament_id", tId)
         .eq("role", role)
         .order("eval_points", { ascending: false })
         .order("base_price", { ascending: false });
@@ -835,7 +1457,8 @@ class SupabaseService {
           await supabase
             .from("players")
             .update({ pool_id: poolId, auction_order: j + 1 })
-            .eq("id", rolePlayers[j].id);
+            .eq("id", rolePlayers[j].id)
+            .eq("tournament_id", tId);
           playersAssigned++;
         }
       }
@@ -844,10 +1467,15 @@ class SupabaseService {
     return { poolsCreated, playersAssigned };
   }
 
-  async poolUnsoldPlayers(poolName = "Accelerated Round - Unsold Players"): Promise<{ pool: Pool; count: number }> {
+  async poolUnsoldPlayers(
+    poolName = "Accelerated Round - Unsold Players",
+    tournamentId?: number,
+  ): Promise<{ pool: Pool; count: number }> {
+    const tId = tournamentId ?? this.activeTournamentId;
     let { data: existingPool } = await supabase
       .from("pools")
       .select("*")
+      .eq("tournament_id", tId)
       .eq("name", poolName)
       .maybeSingle();
 
@@ -855,6 +1483,7 @@ class SupabaseService {
     if (existingPool) {
       pool = {
         id: existingPool.id,
+        tournamentId: tId,
         name: existingPool.name,
         orderIndex: existingPool.order_index,
       };
@@ -862,34 +1491,38 @@ class SupabaseService {
       const { data: maxOrder } = await supabase
         .from("pools")
         .select("order_index")
+        .eq("tournament_id", tId)
         .order("order_index", { ascending: false })
         .limit(1)
         .maybeSingle();
       const nextOrder = (maxOrder?.order_index || 0) + 1;
       const { data: newPool, error } = await supabase
         .from("pools")
-        .insert({ name: poolName, order_index: nextOrder })
+        .insert({ tournament_id: tId, name: poolName, order_index: nextOrder })
         .select()
         .single();
       if (error) throw new Error(`Failed to create unsold pool: ${error.message}`);
       pool = {
         id: newPool.id,
+        tournamentId: tId,
         name: newPool.name,
         orderIndex: newPool.order_index,
       };
     }
 
-    // Fetch players marked unsold by status
+    // Fetch players marked unsold by status in this tournament
     const { data: unsoldByStatus } = await supabase
       .from("players")
       .select("id")
+      .eq("tournament_id", tId)
       .or("status.eq.unsold,status.eq.Unsold")
       .order("eval_points", { ascending: false });
 
-    // Fetch players recorded as unsold in auction logs
+    // Fetch players recorded as unsold in auction logs for this tournament
     const { data: unsoldLogs } = await supabase
       .from("auction_log")
       .select("player_name")
+      .eq("tournament_id", tId)
       .eq("action", "unsold");
 
     const playerIdsSet = new Set<number>();
@@ -901,6 +1534,7 @@ class SupabaseService {
         const { data: playersFromLogs } = await supabase
           .from("players")
           .select("id")
+          .eq("tournament_id", tId)
           .in("name", logNames);
         (playersFromLogs || []).forEach((p: { id: number }) => playerIdsSet.add(p.id));
       }
@@ -921,17 +1555,24 @@ class SupabaseService {
               sold_at: null,
             })
             .eq("id", id)
+            .eq("tournament_id", tId)
         ),
-        supabase.from("auction_log").delete().eq("action", "unsold"),
+        supabase
+          .from("auction_log")
+          .delete()
+          .eq("tournament_id", tId)
+          .eq("action", "unsold"),
       ]);
     }
 
     return { pool, count: playerIds.length };
   }
 
-  async seedOfficialTeams(): Promise<void> {
+  async seedOfficialTeams(tournamentId?: number): Promise<void> {
+    const tId = tournamentId ?? this.activeTournamentId;
     const officialTeams = [
       {
+        tournament_id: tId,
         name: "Chennai Super Kings",
         slug: "chennai-super-kings",
         logo_url: "/images/teams/csk.jpg",
@@ -941,6 +1582,7 @@ class SupabaseService {
         starting_budget: 10000000,
       },
       {
+        tournament_id: tId,
         name: "Mumbai Indians",
         slug: "mumbai-indians",
         logo_url: "/images/teams/mi.jpg",
@@ -950,6 +1592,7 @@ class SupabaseService {
         starting_budget: 10000000,
       },
       {
+        tournament_id: tId,
         name: "Royal Challengers Bengaluru",
         slug: "royal-challengers-bengaluru",
         logo_url: "/images/teams/rcb.jpg",
@@ -959,6 +1602,7 @@ class SupabaseService {
         starting_budget: 10000000,
       },
       {
+        tournament_id: tId,
         name: "Kolkata Knight Riders",
         slug: "kolkata-knight-riders",
         logo_url: "/images/teams/kkr.jpeg",
@@ -968,6 +1612,7 @@ class SupabaseService {
         starting_budget: 10000000,
       },
       {
+        tournament_id: tId,
         name: "Delhi Capitals",
         slug: "delhi-capitals",
         logo_url: "/images/teams/dc.jpg",
@@ -977,6 +1622,7 @@ class SupabaseService {
         starting_budget: 10000000,
       },
       {
+        tournament_id: tId,
         name: "Sunrisers Hyderabad",
         slug: "sunrisers-hyderabad",
         logo_url: "/images/teams/srh.webp",
@@ -986,6 +1632,7 @@ class SupabaseService {
         starting_budget: 10000000,
       },
       {
+        tournament_id: tId,
         name: "Rajasthan Royals",
         slug: "rajasthan-royals",
         logo_url: "/images/teams/rr.png",
@@ -995,6 +1642,7 @@ class SupabaseService {
         starting_budget: 10000000,
       },
       {
+        tournament_id: tId,
         name: "Punjab Kings",
         slug: "punjab-kings",
         logo_url: "/images/teams/pbks.png",
@@ -1004,6 +1652,7 @@ class SupabaseService {
         starting_budget: 10000000,
       },
       {
+        tournament_id: tId,
         name: "Gujarat Titans",
         slug: "gujarat-titans",
         logo_url: "/images/teams/gt.png",
@@ -1013,6 +1662,7 @@ class SupabaseService {
         starting_budget: 10000000,
       },
       {
+        tournament_id: tId,
         name: "Lucknow Super Giants",
         slug: "lucknow-super-giants",
         logo_url: "/images/teams/lsg.png",
@@ -1024,11 +1674,12 @@ class SupabaseService {
     ];
 
     for (const t of officialTeams) {
-      await supabase.from("teams").upsert(t, { onConflict: "name" });
+      await supabase.from("teams").upsert(t, { onConflict: "tournament_id,slug" });
     }
   }
 
-  async resetAuction(): Promise<void> {
+  async resetAuction(tournamentId?: number): Promise<void> {
+    const tId = tournamentId ?? this.activeTournamentId;
     const { error } = await supabase
       .from("players")
       .update({
@@ -1037,7 +1688,7 @@ class SupabaseService {
         sold_to_team: null,
         sold_at: null,
       })
-      .neq("id", 0); // Update all rows
+      .eq("tournament_id", tId);
 
     if (error) {
       await supabase
@@ -1048,17 +1699,19 @@ class SupabaseService {
           sold_to_team: null,
           sold_at: null,
         })
-        .neq("id", 0);
+        .eq("tournament_id", tId);
     }
 
-    await supabase.from("auction_log").delete().neq("id", 0);
+    await supabase.from("auction_log").delete().eq("tournament_id", tId);
   }
 
-  async getUnsoldPlayerNames(): Promise<Set<string>> {
+  async getUnsoldPlayerNames(tournamentId?: number): Promise<Set<string>> {
+    const tId = tournamentId ?? this.activeTournamentId;
     try {
       const { data, error } = await supabase
         .from("auction_log")
         .select("player_name")
+        .eq("tournament_id", tId)
         .eq("action", "unsold");
       if (error || !data) return new Set();
       return new Set(data.map((r: { player_name: string }) => r.player_name));
@@ -1067,7 +1720,8 @@ class SupabaseService {
     }
   }
 
-  async clearAllUnsold(): Promise<number> {
+  async clearAllUnsold(tournamentId?: number): Promise<number> {
+    const tId = tournamentId ?? this.activeTournamentId;
     try {
       // 1. Update players with status 'pending' (matching DB check constraint)
       const { data, error } = await supabase
@@ -1078,6 +1732,7 @@ class SupabaseService {
           sold_to_team: null,
           sold_at: null,
         })
+        .eq("tournament_id", tId)
         .or("status.eq.unsold,status.eq.Unsold")
         .select("id");
 
@@ -1093,6 +1748,7 @@ class SupabaseService {
             sold_to_team: null,
             sold_at: null,
           })
+          .eq("tournament_id", tId)
           .or("status.eq.unsold,status.eq.Unsold")
           .select("id");
         if (fallback.data) {
@@ -1100,7 +1756,11 @@ class SupabaseService {
         }
       }
 
-      await supabase.from("auction_log").delete().eq("action", "unsold");
+      await supabase
+        .from("auction_log")
+        .delete()
+        .eq("tournament_id", tId)
+        .eq("action", "unsold");
       return updatedCount;
     } catch (e) {
       console.error("clearAllUnsold error:", e);
@@ -1123,7 +1783,9 @@ class SupabaseService {
       role: string;
       image_url?: string;
     }>,
+    tournamentId?: number,
   ): Promise<{ inserted: number; errors: string[] }> {
+    const tId = tournamentId ?? this.activeTournamentId;
     const errors: string[] = [];
     let inserted = 0;
 
@@ -1147,6 +1809,7 @@ class SupabaseService {
       const validRole = normalizeRole(p.role);
 
       const { error } = await supabase.from("players").insert({
+        tournament_id: tId,
         name: p.name.trim(),
         age: p.age && !isNaN(Number(p.age)) ? Number(p.age) : null,
         country: p.country?.trim() || "India",
@@ -1175,8 +1838,9 @@ class SupabaseService {
 
   // ─── EXPORT METHODS ───
 
-  async exportAllPlayersCSV(): Promise<string> {
-    const players = await this.getPlayers();
+  async exportAllPlayersCSV(tournamentId?: number): Promise<string> {
+    const tId = tournamentId ?? this.activeTournamentId;
+    const players = await this.getPlayers(tId);
     return this.toCSV(players, [
       "name",
       "role",
@@ -1192,8 +1856,9 @@ class SupabaseService {
     ]);
   }
 
-  async exportSoldPlayersCSV(): Promise<string> {
-    const players = await this.getPlayers();
+  async exportSoldPlayersCSV(tournamentId?: number): Promise<string> {
+    const tId = tournamentId ?? this.activeTournamentId;
+    const players = await this.getPlayers(tId);
     const sold = players.filter((p) => p.status === "sold");
     return this.toCSV(sold, [
       "name",
@@ -1206,8 +1871,9 @@ class SupabaseService {
     ]);
   }
 
-  async exportTeamSummaryCSV(): Promise<string> {
-    const stats = await this.getTeamStats();
+  async exportTeamSummaryCSV(tournamentId?: number): Promise<string> {
+    const tId = tournamentId ?? this.activeTournamentId;
+    const stats = await this.getTeamStats(tId);
     const rows = stats.map((s) => ({
       teamName: s.teamName,
       startingBudget: s.startingBudget,
@@ -1231,10 +1897,12 @@ class SupabaseService {
 
   // ─── PLAYING XI METHODS ───
 
-  async getPlayingXI(teamSlug: string): Promise<string[]> {
+  async getPlayingXI(teamSlug: string, tournamentId?: number): Promise<string[]> {
+    const tId = tournamentId ?? this.activeTournamentId;
     const { data, error } = await supabase
       .from("playing_xi")
       .select("players(name)")
+      .eq("tournament_id", tId)
       .eq("team_slug", teamSlug);
 
     if (error || !data) return [];
@@ -1242,20 +1910,35 @@ class SupabaseService {
     return data.map((d: any) => d.players?.name).filter(Boolean);
   }
 
-  async savePlayingXI(teamSlug: string, playerNames: string[]): Promise<void> {
+  async savePlayingXI(
+    teamSlug: string,
+    playerNames: string[],
+    tournamentId?: number,
+  ): Promise<void> {
+    const tId = tournamentId ?? this.activeTournamentId;
     if (playerNames.length === 0) {
-      await supabase.from("playing_xi").delete().eq("team_slug", teamSlug);
+      await supabase
+        .from("playing_xi")
+        .delete()
+        .eq("tournament_id", tId)
+        .eq("team_slug", teamSlug);
       return;
     }
     const { data: players } = await supabase
       .from("players")
       .select("id, name")
+      .eq("tournament_id", tId)
       .in("name", playerNames);
 
     if (!players || players.length === 0) return;
 
-    await supabase.from("playing_xi").delete().eq("team_slug", teamSlug);
+    await supabase
+      .from("playing_xi")
+      .delete()
+      .eq("tournament_id", tId)
+      .eq("team_slug", teamSlug);
     const rows = players.map((p) => ({
+      tournament_id: tId,
       team_slug: teamSlug,
       player_id: p.id,
     }));
