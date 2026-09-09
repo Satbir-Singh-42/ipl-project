@@ -294,15 +294,31 @@ export function TournamentsPage() {
                         "Public View"
                       )}
                     </Button>
-                    {canManageTournament && (
-                      <Button
-                        onClick={() => handleEnterRoom(tournament, "auction")}
-                        className="flex-1 font-bold text-xs uppercase bg-white/10 hover:bg-white/20 text-white border border-white/10 tracking-wider h-9 rounded-xl"
-                      >
+                    <Button
+                      onClick={() => {
+                        if (canManageTournament) {
+                          handleEnterRoom(tournament, "auction");
+                        } else {
+                          toast({
+                            title: "Auction Locked",
+                            description: "Only the room creator or an admin can start the auction.",
+                            variant: "destructive",
+                          });
+                        }
+                      }}
+                      className={`flex-1 font-bold text-xs uppercase border tracking-wider h-9 rounded-xl transition-all ${
+                        canManageTournament
+                          ? "bg-white/10 hover:bg-white/20 text-white border-white/10"
+                          : "bg-white/5 text-slate-400 border-white/10 opacity-70 cursor-not-allowed"
+                      }`}
+                    >
+                      {canManageTournament ? (
                         <Shield className="w-3 h-3 mr-1 text-[#fe6804]" />
-                        Auction
-                      </Button>
-                    )}
+                      ) : (
+                        <Lock className="w-3 h-3 mr-1 text-slate-400" />
+                      )}
+                      Auction
+                    </Button>
                   </div>
                 </div>
               </motion.div>
