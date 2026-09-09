@@ -30,6 +30,10 @@ export function SignUpPage() {
       toast({ title: "All fields are required", variant: "destructive" });
       return;
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      toast({ title: "Please enter a valid email address", variant: "destructive" });
+      return;
+    }
     if (password.length < 6) {
       toast({
         title: "Password must be at least 6 characters long",

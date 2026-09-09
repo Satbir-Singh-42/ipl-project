@@ -27,6 +27,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   isAdmin: boolean;
   isAuthenticated: boolean;
+  canManageRoom: (createdBy?: string | null) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -253,6 +254,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsMasterAdmin(false);
   };
 
+  const canManageRoom = (createdBy?: string | null): boolean => {
+    return role === "admin" || (!!user?.id && createdBy === user.id);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -267,6 +272,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         isAdmin: role === "admin",
         isAuthenticated: !!user && !!role,
+        canManageRoom,
       }}
     >
       {children}

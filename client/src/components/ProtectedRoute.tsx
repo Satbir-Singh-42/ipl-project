@@ -6,13 +6,15 @@ import type { ReactNode } from "react";
 interface ProtectedRouteProps {
   children: ReactNode;
   requiredRole?: UserRole;
+  allowOwnerOf?: string | null;
 }
 
 export function ProtectedRoute({
   children,
   requiredRole = "admin",
+  allowOwnerOf,
 }: ProtectedRouteProps) {
-  const { isAuthenticated, role, isLoading } = useAuth();
+  const { isAuthenticated, role, isLoading, user } = useAuth();
 
   if (isLoading) {
     return <LoadingPage />;
@@ -24,6 +26,11 @@ export function ProtectedRoute({
 
   // Admin / Host can access protected routes
   if (role === "admin") {
+    return <>{children}</>;
+  }
+
+  // The room creator may manage their own room's auction/hosting
+  if (allowOwnerOf && user?.id && allowOwnerOf === user.id) {
     return <>{children}</>;
   }
 

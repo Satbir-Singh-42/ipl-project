@@ -15,7 +15,7 @@ interface RoomAccessGuardProps {
 export function RoomAccessGuard({ children }: RoomAccessGuardProps) {
   const [, setLocation] = useLocation();
   const { currentTournament } = useTournament();
-  const { isAdmin } = useAuth();
+  const { isAdmin, canManageRoom } = useAuth();
   const { toast } = useToast();
 
   const [password, setPassword] = useState("");
@@ -32,8 +32,8 @@ export function RoomAccessGuard({ children }: RoomAccessGuardProps) {
     return <>{children}</>;
   }
 
-  // Admins bypass room password
-  if (isAdmin) {
+  // Admins and the room creator (owner) bypass room password
+  if (isAdmin || canManageRoom(currentTournament.created_by)) {
     return <>{children}</>;
   }
 

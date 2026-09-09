@@ -20,6 +20,7 @@ export interface Tournament {
   is_private?: boolean;
   room_password?: string;
   admin_password?: string;
+  created_by?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -184,7 +185,7 @@ class SupabaseService {
   async getTournaments(): Promise<Tournament[]> {
     const { data, error } = await supabase
       .from("tournaments")
-      .select("id, name, slug, room_code, description, currency_symbol, currency_code, banner_url, logo_url, is_locked, is_private, created_at, updated_at")
+      .select("id, name, slug, room_code, description, currency_symbol, currency_code, banner_url, logo_url, is_locked, is_private, created_by, created_at, updated_at")
       .order("id", { ascending: true });
 
     if (error) {
@@ -207,7 +208,7 @@ class SupabaseService {
   async getTournamentById(id: number): Promise<Tournament | null> {
     const { data, error } = await supabase
       .from("tournaments")
-      .select("id, name, slug, room_code, description, currency_symbol, currency_code, banner_url, logo_url, is_locked, is_private, created_at, updated_at")
+      .select("id, name, slug, room_code, description, currency_symbol, currency_code, banner_url, logo_url, is_locked, is_private, created_by, created_at, updated_at")
       .eq("id", id)
       .maybeSingle();
 
@@ -221,7 +222,7 @@ class SupabaseService {
 
     const { data, error } = await supabase
       .from("tournaments")
-      .select("id, name, slug, room_code, description, currency_symbol, currency_code, banner_url, logo_url, is_locked, is_private, created_at, updated_at")
+      .select("id, name, slug, room_code, description, currency_symbol, currency_code, banner_url, logo_url, is_locked, is_private, created_by, created_at, updated_at")
       .or(`slug.eq.${clean.toLowerCase()},room_code.eq.${clean.toUpperCase()},room_code.eq.${clean}`)
       .maybeSingle();
 
@@ -268,6 +269,9 @@ class SupabaseService {
 
     if (!email || !password) {
       throw new Error("Email and password are required.");
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new Error("Please enter a valid email address.");
     }
     if (password.length < 6) {
       throw new Error("Password must be at least 6 characters long.");
@@ -475,6 +479,9 @@ class SupabaseService {
       }
     }
 
+    const { data: authData } = await supabase.auth.getUser();
+    const createdBy = authData?.user?.id ?? null;
+
     const { data, error } = await supabase
       .from("tournaments")
       .insert({
@@ -489,13 +496,7 @@ class SupabaseService {
         is_private: tournament.is_private || false,
         room_password: tournament.room_password?.trim() || "",
         admin_password: tournament.admin_password?.trim() || "admin123",
-        created_by:
-          tournament.created_by &&
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-            tournament.created_by,
-          )
-            ? tournament.created_by
-            : null,
+        created_by: createdBy,
       })
       .select()
       .single();

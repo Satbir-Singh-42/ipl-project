@@ -71,7 +71,7 @@ export const PlayerDetailsSection = (): JSX.Element => {
     return "overview";
   });
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
-  const { isAuthenticated, role, logout } = useAuth();
+  const { isAuthenticated, role, logout, canManageRoom } = useAuth();
   const { currentTournament } = useTournament();
   const {
     teamStats,
@@ -94,13 +94,15 @@ export const PlayerDetailsSection = (): JSX.Element => {
       { id: "sold", label: "SOLD PLAYERS", shortLabel: "SOLD", isExternal: false, href: "" },
       { id: "leaderboard", label: "LEADERBOARD", shortLabel: "LEADERBOARD", isExternal: false, href: "" },
       { id: "guidelines", label: "GUIDELINES", shortLabel: "GUIDELINES", isExternal: false, href: "" },
-      { id: "auction", label: "AUCTION", shortLabel: "AUCTION", isExternal: true, href: auctionHref },
     ];
+    if (isAuthenticated && canManageRoom(currentTournament?.created_by)) {
+      list.push({ id: "auction", label: "AUCTION", shortLabel: "AUCTION", isExternal: true, href: auctionHref });
+    }
     if (isAuthenticated && role === "admin") {
       list.push({ id: "admin", label: "ADMIN PANEL", shortLabel: "ADMIN", isExternal: true, href: "/admin" });
     }
     return list;
-  }, [isAuthenticated, role, currentTournament]);
+  }, [isAuthenticated, role, canManageRoom, currentTournament]);
 
   // Call all hooks unconditionally at the top level
   const { data: unsoldPlayers, isLoading: loadingUnsold } = getUnsoldPlayers();

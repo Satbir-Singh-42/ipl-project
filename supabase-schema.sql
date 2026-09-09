@@ -52,15 +52,37 @@ ALTER TABLE tournaments ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Tournaments are viewable by everyone" ON tournaments;
 CREATE POLICY "Tournaments are viewable by everyone"
   ON tournaments FOR SELECT USING (true);
+
+-- Only registered (authenticated) users can create rooms, and the room
+-- is automatically owned by the signed-up user who created it.
+DROP POLICY IF EXISTS "Registered users can create tournament rooms" ON tournaments;
 DROP POLICY IF EXISTS "Authenticated users can insert tournaments" ON tournaments;
-CREATE POLICY "Authenticated users can insert tournaments"
-  ON tournaments FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Registered users can create tournament rooms"
+  ON tournaments FOR INSERT TO authenticated
+  WITH CHECK (created_by = auth.uid());
+
+-- The room creator (or a users_meta admin) can update/delete their own rooms.
+DROP POLICY IF EXISTS "Room owner or admin can update tournaments" ON tournaments;
 DROP POLICY IF EXISTS "Authenticated users can update tournaments" ON tournaments;
-CREATE POLICY "Authenticated users can update tournaments"
-  ON tournaments FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Room owner or admin can update tournaments"
+  ON tournaments FOR UPDATE
+  USING (
+    auth.uid() = created_by OR
+    EXISTS (SELECT 1 FROM users_meta WHERE auth_id = auth.uid() AND role = 'admin')
+  )
+  WITH CHECK (
+    auth.uid() = created_by OR
+    EXISTS (SELECT 1 FROM users_meta WHERE auth_id = auth.uid() AND role = 'admin')
+  );
+
+DROP POLICY IF EXISTS "Room owner or admin can delete tournaments" ON tournaments;
 DROP POLICY IF EXISTS "Authenticated users can delete tournaments" ON tournaments;
-CREATE POLICY "Authenticated users can delete tournaments"
-  ON tournaments FOR DELETE TO authenticated USING (true);
+CREATE POLICY "Room owner or admin can delete tournaments"
+  ON tournaments FOR DELETE
+  USING (
+    auth.uid() = created_by OR
+    EXISTS (SELECT 1 FROM users_meta WHERE auth_id = auth.uid() AND role = 'admin')
+  );
 
 -- Insert Default Tournament #1 (IPL 2025 Mega Auction)
 INSERT INTO tournaments (id, name, slug, room_code, description, currency_symbol, currency_code)

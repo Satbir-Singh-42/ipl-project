@@ -36,7 +36,7 @@ interface RoomCardStats {
 export function TournamentsPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { isAdmin, isAuthenticated } = useAuth();
+  const { isAdmin, isAuthenticated, canManageRoom } = useAuth();
   const { tournaments, currentTournament, switchTournament } = useTournament();
 
   const [statsMap, setStatsMap] = useState<Record<number, RoomCardStats>>({});
@@ -72,7 +72,7 @@ export function TournamentsPage() {
   const handleEnterRoom = async (tournament: Tournament, target: "public" | "auction" = "public") => {
     if (tournament.is_private) {
       const isUnlocked = sessionStorage.getItem(`room_unlocked_${tournament.id}`) === "true";
-      if (!isUnlocked && !isAdmin) {
+      if (!isUnlocked && !canManageRoom(tournament.created_by)) {
         setUnlockModalTournament(tournament);
         setUnlockTarget(target);
         setUnlockPasswordInput("");
@@ -205,6 +205,7 @@ export function TournamentsPage() {
           {tournaments.map((tournament) => {
             const isCurrent = tournament.id === currentTournament?.id;
             const stats = statsMap[tournament.id] || { teamsCount: 0, playersCount: 0, poolsCount: 0 };
+            const canManageTournament = canManageRoom(tournament.created_by);
 
             return (
               <motion.div
@@ -293,12 +294,15 @@ export function TournamentsPage() {
                         "Public View"
                       )}
                     </Button>
-                    <Button
-                      onClick={() => handleEnterRoom(tournament, "auction")}
-                      className="flex-1 font-bold text-xs uppercase bg-white/10 hover:bg-white/20 text-white border border-white/10 tracking-wider h-9 rounded-xl"
-                    >
-                      Auction
-                    </Button>
+                    {canManageTournament && (
+                      <Button
+                        onClick={() => handleEnterRoom(tournament, "auction")}
+                        className="flex-1 font-bold text-xs uppercase bg-white/10 hover:bg-white/20 text-white border border-white/10 tracking-wider h-9 rounded-xl"
+                      >
+                        <Shield className="w-3 h-3 mr-1 text-[#fe6804]" />
+                        Auction
+                      </Button>
+                    )}
                   </div>
                 </div>
               </motion.div>

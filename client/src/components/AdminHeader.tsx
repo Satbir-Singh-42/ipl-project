@@ -11,7 +11,7 @@ interface AdminHeaderProps {
 
 export function AdminHeader({ activeTab, title, children }: AdminHeaderProps) {
   const [, setLocation] = useLocation();
-  const { logout, user, role, displayName } = useAuth();
+  const { logout, user, role, displayName, isAdmin } = useAuth();
   const { currentTournament } = useTournament();
 
   const publicHref = currentTournament?.room_code
@@ -27,16 +27,17 @@ export function AdminHeader({ activeTab, title, children }: AdminHeaderProps) {
     shortLabel?: string;
     href: string;
     isExternal: boolean;
+    adminOnly?: boolean;
   }[] = [
-    { id: "dashboard", label: "DASHBOARD", shortLabel: "DASHBOARD", href: "/admin", isExternal: false },
-    { id: "players", label: "MANAGE PLAYERS", shortLabel: "PLAYERS", href: "/admin/players", isExternal: false },
-    { id: "teams", label: "MANAGE TEAMS", shortLabel: "TEAMS", href: "/admin/teams", isExternal: false },
-    { id: "pools", label: "SETS & POOLS", shortLabel: "POOLS", href: "/admin/pools", isExternal: false },
-    { id: "leaderboard", label: "LEADERBOARD", shortLabel: "LEADERBOARD", href: "/admin/leaderboard", isExternal: false },
-    { id: "export", label: "EXPORT DATA", shortLabel: "EXPORT", href: "/admin/export", isExternal: false },
+    { id: "dashboard", label: "DASHBOARD", shortLabel: "DASHBOARD", href: "/admin", isExternal: false, adminOnly: true },
+    { id: "players", label: "MANAGE PLAYERS", shortLabel: "PLAYERS", href: "/admin/players", isExternal: false, adminOnly: true },
+    { id: "teams", label: "MANAGE TEAMS", shortLabel: "TEAMS", href: "/admin/teams", isExternal: false, adminOnly: true },
+    { id: "pools", label: "SETS & POOLS", shortLabel: "POOLS", href: "/admin/pools", isExternal: false, adminOnly: true },
+    { id: "leaderboard", label: "LEADERBOARD", shortLabel: "LEADERBOARD", href: "/admin/leaderboard", isExternal: false, adminOnly: true },
+    { id: "export", label: "EXPORT DATA", shortLabel: "EXPORT", href: "/admin/export", isExternal: false, adminOnly: true },
     { id: "auction", label: "AUCTION", shortLabel: "AUCTION", href: auctionHref, isExternal: true },
     { id: "public", label: "PUBLIC VIEW", shortLabel: "PUBLIC", href: publicHref, isExternal: false },
-  ];
+  ].filter((item) => !item.adminOnly || isAdmin);
 
   return (
     <header

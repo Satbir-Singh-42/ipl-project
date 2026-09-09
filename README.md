@@ -65,7 +65,8 @@ Every tournament room is fully isolated (multi-tenancy), so a single deployment 
 - **Create an account** (`/signup`) — Public sign-up with username, email, and password (Supabase Auth-backed, plus a `users_meta` profile row with the `organizer` role).
 - **Sign in** (`/login`) — Email/password, master admin (`admin`), or room admin credentials (`room code` + admin password).
 - **Gated room creation** — Visiting `/create` requires a signed-in account. Guests see a sign-up/login gate before the room form.
-- **Ownership** — Rooms record their creator's `auth_id` in `tournaments.created_by`.
+- **Ownership** — Rooms are stamped with the creator's `auth_id` in `tournaments.created_by` (server-set from the session, not client-supplied). RLS enforces that only the creator or an `admin` can update/delete their rooms; anonymous users can't create at all.
+- **Access model** — Anonymous visitors can view public rooms and join private rooms with the room password. The room's **creator can run its auction** (`/room/:code/auction`) and manage its credentials (public/private, room password, admin password); full CRUD admin pages stay admin-only.
 
 ### Realtime & Persistence
 - **Supabase Realtime** — Tables are subscribed so dashboards and the auction stay in sync across devices.

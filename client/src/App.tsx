@@ -114,10 +114,20 @@ function RoomAuction({ params }: { params?: { roomCode?: string } }) {
 
   return (
     <RoomAccessGuard>
-      <ProtectedRoute requiredRole="admin">
+      <ProtectedRoute requiredRole="admin" allowOwnerOf={currentTournament?.created_by}>
         <AuctionPage />
       </ProtectedRoute>
     </RoomAccessGuard>
+  );
+}
+
+// Auction for the active room — room owner or admin
+function AuctionRoute() {
+  const { currentTournament } = useTournament();
+  return (
+    <ProtectedRoute requiredRole="admin" allowOwnerOf={currentTournament?.created_by}>
+      <AuctionPage />
+    </ProtectedRoute>
   );
 }
 
@@ -198,11 +208,9 @@ function Router() {
             <Route path="/login" component={LoginPage} />
             <Route path="/signup" component={SignUpPage} />
 
-            {/* Protected: Auction (admin only) */}
+            {/* Protected: Auction (room owner or admin) */}
             <Route path="/auction">
-              <ProtectedRoute requiredRole="admin">
-                <AuctionPage />
-              </ProtectedRoute>
+              <AuctionRoute />
             </Route>
 
             {/* Protected: Admin (admin only) */}
