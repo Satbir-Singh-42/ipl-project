@@ -2,7 +2,7 @@
 
 A production-grade, multi-tenant web application for running and managing a private Indian Premier League player auction. It combines a live bidding screen, real-time team/player dashboards, an admin panel, and tournament-room management — all backed by **Supabase** for data persistence and realtime sync.
 
-Built by ISTE for the IPL IPL Auction Portal Mega Auction.
+Built by ISTE for the IPL 2025 Mega Auction.
 
 ---
 
@@ -29,7 +29,7 @@ Built by ISTE for the IPL IPL Auction Portal Mega Auction.
 
 ## Overview
 
-The IPL IPL Auction Portal Player Auction Dashboard lets an auctioneer, organizers, and viewers manage and watch a franchise auction in real time. Administrators can create tournament "rooms", register teams, import players, run the auction, and track budgets — while the public dashboard shows live team cards, sold/unsold player pools, a leaderboard, and Playing XI selection.
+The IPL 2025 Player Auction Dashboard lets an auctioneer, organizers, and viewers manage and watch a franchise auction in real time. Administrators can create tournament "rooms", register teams, import players, run the auction, and track budgets — while the public dashboard shows live team cards, sold/unsold player pools, a leaderboard, and Playing XI selection.
 
 Every tournament room is fully isolated (multi-tenancy), so a single deployment can host multiple independent auctions.
 
@@ -127,7 +127,7 @@ Each tournament is an isolated room with its own data and a shareable URL.
 
 ```bash
 git clone <repository-url>
-cd IPL_Auction_IPL Auction Portal
+cd IPL_Auction_2025
 npm install
 ```
 
@@ -147,7 +147,7 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key_here
 Open the **SQL Editor** in your Supabase project, paste the contents of
 [`supabase-schema.sql`](./supabase-schema.sql), and run it. This creates all tables,
 indexes, triggers, RLS policies, realtime subscriptions, storage buckets, and seeds the
-default IPL IPL Auction Portal tournament with 12 teams.
+default IPL 2025 tournament with 12 teams.
 
 ### 4. Run the App
 
@@ -155,10 +155,10 @@ default IPL IPL Auction Portal tournament with 12 teams.
 npm run dev
 ```
 
-Open `http://localhost:5173` (Vite default). Navigate to `/room/IPLIPL Auction Portal` to enter the
+Open `http://localhost:5173` (Vite default). Navigate to `/room/IPL2025` to enter the
 default seeded tournament, or use the landing page.
 
-> The default room runs under room code `IPLIPL Auction Portal` (admin password `admin123`). Change
+> The default room runs under room code `IPL2025` (admin password `admin123`). Change
 > these for production.
 
 ---
@@ -199,7 +199,7 @@ The full schema lives in [`supabase-schema.sql`](./supabase-schema.sql). Summary
 ## Project Structure
 
 ```
-IPL_Auction_IPL Auction Portal/
+IPL_Auction_2025/
 ├── client/                          # React frontend (Vite)
 │   ├── index.html                   # HTML entry + meta tags
 │   ├── public/                      # Static assets
