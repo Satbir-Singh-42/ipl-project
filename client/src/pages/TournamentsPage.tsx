@@ -36,7 +36,7 @@ interface RoomCardStats {
 export function TournamentsPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { isAdmin, isAuthenticated, canManageRoom } = useAuth();
+  const { isAdmin, isAuthenticated, canManageRoom, grantRoomAdmin } = useAuth();
   const { tournaments, currentTournament, switchTournament } = useTournament();
 
   const [statsMap, setStatsMap] = useState<Record<number, RoomCardStats>>({});
@@ -70,9 +70,17 @@ export function TournamentsPage() {
   }, [tournaments]);
 
   const handleEnterRoom = async (tournament: Tournament, target: "public" | "auction" = "public") => {
-    if (tournament.is_private) {
+    const canManageTournament = canManageRoom(tournament.created_by);
+
+    // Auction requires admin credentials — route non-admins to the login page.
+    if (target === "auction" && !canManageTournament) {
+      setLocation(`/login?next=/room/${encodeURIComponent(tournament.room_code)}/auction`);
+      return;
+    }
+
+    if (tournament.is_private && target === "public") {
       const isUnlocked = sessionStorage.getItem(`room_unlocked_${tournament.id}`) === "true";
-      if (!isUnlocked && !canManageRoom(tournament.created_by)) {
+      if (!isUnlocked) {
         setUnlockModalTournament(tournament);
         setUnlockTarget(target);
         setUnlockPasswordInput("");
@@ -97,29 +105,44 @@ export function TournamentsPage() {
     if (!unlockModalTournament) return;
 
     const inputPass = unlockPasswordInput.trim();
-    const isMatch = await supabaseService.verifyRoomPassword(unlockModalTournament.id, inputPass);
+    const tournament = unlockModalTournament;
+
+    // "public" target = view a private room → verify the *room* password.
+    // "auction" target = admin console → verify the *admin* password.
+    const isMatch =
+      unlockTarget === "auction"
+        ? await grantRoomAdmin(tournament.room_code, inputPass)
+        : await supabaseService.verifyRoomPassword(tournament.id, inputPass);
 
     if (isMatch) {
-      sessionStorage.setItem(`room_unlocked_${unlockModalTournament.id}`, "true");
+      sessionStorage.setItem(`room_unlocked_${tournament.id}`, "true");
+      if (unlockTarget === "auction") {
+        sessionStorage.setItem(`room_admin_${tournament.id}`, "true");
+      }
       const target = unlockTarget;
-      const tourney = unlockModalTournament;
       setUnlockModalTournament(null);
       setUnlockPasswordInput("");
 
-      await switchTournament(tourney.id);
+      await switchTournament(tournament.id);
       toast({
-        title: "Room Unlocked",
-        description: `Access granted to [${tourney.name}].`,
+        title: unlockTarget === "auction" ? "Admin Access Granted" : "Room Unlocked",
+        description:
+          unlockTarget === "auction"
+            ? `Full admin access to [${tournament.name}].`
+            : `You can now view [${tournament.name}].`,
       });
       if (target === "auction") {
-        setLocation(`/room/${tourney.room_code}/auction`);
+        setLocation(`/room/${tournament.room_code}/auction`);
       } else {
-        setLocation(`/room/${tourney.room_code}`);
+        setLocation(`/room/${tournament.room_code}`);
       }
     } else {
       toast({
         title: "Access Denied",
-        description: "Incorrect password for this private room.",
+        description:
+          unlockTarget === "auction"
+            ? "Incorrect admin password for this room."
+            : "Incorrect room password for this private room.",
         variant: "destructive",
       });
     }
@@ -294,25 +317,10 @@ export function TournamentsPage() {
                       )}
                     </Button>
                     <Button
-                      onClick={() => {
-                        if (canManageTournament) {
-                          handleEnterRoom(tournament, "auction");
-                        } else {
-                          setLocation(
-                            `/login?next=${encodeURIComponent(`/room/${tournament.room_code}/auction`)}`,
-                          );
-                        }
-                      }}
-                      className={`flex-1 font-bold text-xs uppercase border tracking-wider h-9 rounded-xl transition-all ${canManageTournament
-                          ? "bg-white/10 hover:bg-white/20 text-white border-white/10"
-                          : "bg-white/5 text-slate-400 border-white/10 opacity-70 cursor-not-allowed"
-                        }`}
+                      onClick={() => handleEnterRoom(tournament, "auction")}
+                      className={`flex-1 font-bold text-xs uppercase text-white tracking-wider h-9 rounded-xl transition-all bg-white/10 hover:bg-white/20 border border-white/10`}
                     >
-                      {canManageTournament ? (
-                        <Shield className="w-3 h-3 mr-1 text-[#fe6804]" />
-                      ) : (
-                        <Lock className="w-3 h-3 mr-1 text-slate-400" />
-                      )}
+                      <Shield className="w-3 h-3 mr-1 text-[#fe6804]" />
                       Auction
                     </Button>
                   </div>
@@ -369,10 +377,16 @@ export function TournamentsPage() {
         >
           <DialogHeader className="text-left space-y-1.5 pr-6">
             <DialogTitle className="text-base sm:text-lg font-bold text-white tracking-tight leading-snug">
-              Unlock {unlockModalTournament?.name}?
+              {unlockModalTournament?.name}
             </DialogTitle>
             <DialogDescription className="text-xs sm:text-sm text-zinc-300 leading-relaxed font-normal">
-              This auction room is private. Enter the room access password to view teams, rosters, and live bidding.
+              {unlockTarget === "auction" ? (
+                <>Enter this room&apos;s <span className="text-white font-semibold">admin password</span> to access
+                  the full admin console (players, teams, auction &amp; more).</>
+              ) : (
+                <>Enter this room&apos;s <span className="text-white font-semibold">room password</span>
+                  (set by the admin during setup) to view this private room.</>
+              )}
             </DialogDescription>
           </DialogHeader>
 
@@ -382,7 +396,9 @@ export function TournamentsPage() {
                 type={showUnlockPass ? "text" : "password"}
                 required
                 autoFocus
-                placeholder="Enter room password..."
+                placeholder={
+                  unlockTarget === "auction" ? "Enter admin password..." : "Enter room password..."
+                }
                 value={unlockPasswordInput}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUnlockPasswordInput(e.target.value)}
                 className="bg-[#272732] border border-white/10 text-white h-10 px-3.5 rounded-xl text-sm focus:border-[#fe6804] pr-10"

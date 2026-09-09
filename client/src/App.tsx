@@ -113,10 +113,8 @@ function RoomAuction({ params }: { params?: { roomCode?: string } }) {
   }, [params?.roomCode, currentTournament?.room_code, switchTournament]);
 
   return (
-    <RoomAccessGuard>
-      <ProtectedRoute requiredRole="admin" allowOwnerOf={currentTournament?.created_by}>
-        <AuctionPage />
-      </ProtectedRoute>
+    <RoomAccessGuard mode="admin">
+      <AuctionPage />
     </RoomAccessGuard>
   );
 }

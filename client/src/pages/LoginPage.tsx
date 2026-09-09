@@ -1,17 +1,10 @@
 import { useState } from "react";
 import { useLocation, Redirect } from "wouter";
-import { LogIn, KeyRound, type LucideIcon } from "lucide-react";
+import { LogIn, KeyRound } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { AuthLayout } from "@/components/AuthLayout";
 import { AuthField } from "@/components/AuthField";
-
-const ModeBadge = ({ icon: Icon, text }: { icon: LucideIcon; text: string }) => (
-  <span className="flex items-center gap-1.5 bg-white/[0.06] border border-white/10 rounded-full px-3 py-1.5">
-    <Icon className="w-3.5 h-3.5 text-[#fe6804]" />
-    <span className="text-[11px] text-white/70">{text}</span>
-  </span>
-);
 
 export function LoginPage() {
   const [email, setEmail] = useState("");
@@ -53,7 +46,7 @@ export function LoginPage() {
     <AuthLayout
       eyebrow="Welcome Back"
       title="Sign In to IPL Auction Portal"
-      subtitle="Access the admin console, run a room's auction, or continue as an organizer."
+      subtitle="Access the admin console or run a room's auction."
       cardBadge={
         <div className="w-16 h-16 rounded-2xl bg-[#fe6804]/15 border border-[#fe6804]/40 shadow-[0_0_30px_rgba(254,104,4,0.25)] flex items-center justify-center">
           <LogIn className="w-8 h-8 text-[#fe6804]" />
@@ -68,7 +61,7 @@ export function LoginPage() {
           onChange={setEmail}
           placeholder="admin or room code or you@example.com"
           autoComplete="username"
-          hint="Master admins use admin • Room hosts use their room code • Organizers use their email."
+          hint="Use your admin credentials, room code, or email to sign in."
         />
 
         <AuthField
@@ -89,12 +82,6 @@ export function LoginPage() {
           {isSubmitting ? "Signing in..." : "Sign In"}
         </button>
       </form>
-
-      <div className="mt-6 flex flex-wrap justify-center gap-2">
-        <ModeBadge icon={KeyRound} text="Master Admin" />
-        <ModeBadge icon={KeyRound} text="Room Host" />
-        <ModeBadge icon={KeyRound} text="Organizer" />
-      </div>
 
       <div className="mt-6 pt-6 border-t border-white/10 text-center">
         <p className="text-white/40 text-sm">

@@ -147,6 +147,28 @@ interface DBTeam {
 
 const ACTIVE_TOURNAMENT_KEY = "ipl_active_tournament_id";
 
+// Run an async mapper over a list with a bounded concurrency so we don't burst
+// hundreds of network calls (e.g. image uploads) at once or block sequentially.
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+
+  const worker = async () => {
+    while (cursor < items.length) {
+      const idx = cursor++;
+      results[idx] = await fn(items[idx], idx);
+    }
+  };
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 class SupabaseService {
   private activeTournamentId: number = 1;
 
@@ -1264,8 +1286,17 @@ class SupabaseService {
     }
 
     try {
-      const response = await fetch(trimmed);
-      if (!response.ok) return trimmed;
+      // Abort the external fetch if it takes too long so a slow/unreachable
+      // image host never blocks the import (falls back to the original URL).
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      let response: Response;
+      try {
+        response = await fetch(trimmed, { signal: controller.signal });
+        if (!response.ok) return trimmed;
+      } finally {
+        clearTimeout(timeout);
+      }
 
       const blob = await response.blob();
       const contentType = blob.type || "image/png";
@@ -1830,6 +1861,34 @@ class SupabaseService {
       return "Batsman";
     };
 
+    // Only re-host external images when a real Supabase session exists. Room-
+    // admin sessions (room code + admin password) have no JWT, so storage
+    // uploads would fail anyway — re-hosting them would just stall the import.
+    let resolvedImages: (string | null | undefined)[] = players.map((p) => p.image_url?.trim() || null);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session) {
+        resolvedImages = await mapLimit(players, 6, async (p) => {
+          const raw = p.image_url?.trim() || null;
+          if (
+            raw &&
+            (raw.startsWith("http://") || raw.startsWith("https://")) &&
+            !raw.includes("supabase.co/storage/v1/object/public/")
+          ) {
+            return this.uploadImageFromUrl("player-images", raw);
+          }
+          return raw;
+        });
+      }
+    } catch {
+      // No session / unreadable — keep original URLs, import must not stall.
+    }
+
+    // Build clean rows first, then insert in chunks (much faster than one-by-
+    // one round trips for large rosters).
+    const rows: Array<Record<string, unknown>> = [];
     for (let i = 0; i < players.length; i++) {
       const p = players[i];
       if (!p.name || !p.name.trim()) {
@@ -1837,19 +1896,7 @@ class SupabaseService {
         continue;
       }
 
-      const validRole = normalizeRole(p.role);
-
-      // Re-host any external image URL into Supabase Storage so the imported
-      // player keeps a self-contained copy even if the source URL is removed.
-      let finalImageUrl = p.image_url?.trim() || null;
-      if (
-        finalImageUrl &&
-        (finalImageUrl.startsWith("http://") || finalImageUrl.startsWith("https://"))
-      ) {
-        finalImageUrl = await this.uploadImageFromUrl("player-images", finalImageUrl);
-      }
-
-      const { error } = await supabase.from("players").insert({
+      rows.push({
         tournament_id: tId,
         name: p.name.trim(),
         age: p.age && !isNaN(Number(p.age)) ? Number(p.age) : null,
@@ -1861,16 +1908,21 @@ class SupabaseService {
         economy: p.economy && !isNaN(Number(p.economy)) ? Number(p.economy) : null,
         eval_points: p.eval_points && !isNaN(Number(p.eval_points)) ? Number(p.eval_points) : 0,
         base_price: p.base_price && !isNaN(Number(p.base_price)) ? Number(p.base_price) : 400000,
-        role: validRole,
-        image_url: finalImageUrl,
+        role: normalizeRole(p.role),
+        image_url: resolvedImages[i],
         status: "pending",
         sold_price: 0,
       });
+    }
 
+    const CHUNK = 100;
+    for (let start = 0; start < rows.length; start += CHUNK) {
+      const chunk = rows.slice(start, start + CHUNK);
+      const { error } = await supabase.from("players").insert(chunk);
       if (error) {
-        errors.push(`Row ${i + 2} (${p.name}): ${error.message}`);
+        errors.push(`Rows ${start + 2}-${start + 2 + chunk.length - 1}: ${error.message}`);
       } else {
-        inserted++;
+        inserted += chunk.length;
       }
     }
 
@@ -1907,22 +1959,28 @@ class SupabaseService {
       (existing || []).map((p: { name: string }) => p.name),
     );
 
-    for (let i = 0; i < DEFAULT_PLAYERS.length; i++) {
-      const p = DEFAULT_PLAYERS[i];
-      if (existingNames.has(p.name)) {
-        skipped++;
-        continue;
-      }
+    // Candidates that need to be inserted (skip names already present).
+    const candidates = DEFAULT_PLAYERS.filter((p) => !existingNames.has(p.name));
+    skipped = DEFAULT_PLAYERS.length - candidates.length;
 
-      // Re-host external headshot into Supabase Storage so the dataset is
-      // self-contained and survives the external source disappearing.
-      let finalImageUrl = p.image_url || null;
+    // Re-host external headshots into Supabase Storage in parallel (bounded
+    // concurrency + per-fetch timeout) so the roster is self-contained without
+    // a slow/hanging image host stalling the whole import.
+    const resolvedImages = await mapLimit(candidates, 6, async (p) => {
+      const raw = p.image_url || null;
       if (
-        finalImageUrl &&
-        (finalImageUrl.startsWith("http://") || finalImageUrl.startsWith("https://"))
+        raw &&
+        (raw.startsWith("http://") || raw.startsWith("https://")) &&
+        !raw.includes("supabase.co/storage/v1/object/public/")
       ) {
-        finalImageUrl = await this.uploadImageFromUrl("player-images", finalImageUrl);
+        return this.uploadImageFromUrl("player-images", raw);
       }
+      return raw;
+    });
+
+    for (let i = 0; i < candidates.length; i++) {
+      const p = candidates[i];
+      const finalImageUrl = resolvedImages[i];
 
       const { error } = await supabase.from("players").insert({
         tournament_id: tId,

@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 
 export function LandingPage() {
   const [, setLocation] = useLocation();
-  const { isAdmin, isAuthenticated } = useAuth();
+  const { isAdmin, isAuthenticated, logout } = useAuth();
 
   return (
     <div className="min-h-screen bg-[#0f1629] text-white flex flex-col font-['Segoe_UI',sans-serif]">
@@ -60,8 +60,7 @@ export function LandingPage() {
                   size="sm"
                   className="border-red-500/40 text-red-300 hover:bg-red-500/20 text-xs"
                   onClick={async () => {
-                    localStorage.removeItem("ipl_custom_auth_session");
-                    window.location.reload();
+                    await logout();
                   }}
                 >
                   Sign Out

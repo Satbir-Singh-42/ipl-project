@@ -1,21 +1,25 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { Lock, Eye, EyeOff, ArrowLeft, Shield } from "lucide-react";
+import { Eye, EyeOff, Shield } from "lucide-react";
 import { useTournament } from "@/contexts/TournamentContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabaseService } from "@/services/supabaseService";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
 interface RoomAccessGuardProps {
   children: React.ReactNode;
+  /** "view" = room dashboard/read-only pages. Public rooms need no credentials;
+   *  private rooms need the room password set by the admin during setup.
+   *  "admin" = control pages (auction console), which always require the admin
+   *  password or an admin/room-admin session. */
+  mode?: "view" | "admin";
 }
 
-export function RoomAccessGuard({ children }: RoomAccessGuardProps) {
+export function RoomAccessGuard({ children, mode = "view" }: RoomAccessGuardProps) {
   const [, setLocation] = useLocation();
   const { currentTournament } = useTournament();
-  const { isAdmin, canManageRoom } = useAuth();
+  const { isAuthenticated, isAdmin, role, grantRoomAdmin } = useAuth();
   const { toast } = useToast();
 
   const [password, setPassword] = useState("");
@@ -27,22 +31,30 @@ export function RoomAccessGuard({ children }: RoomAccessGuardProps) {
     return <>{children}</>;
   }
 
-  // Public rooms or system tournament #1 are open
-  if (!currentTournament.is_private) {
-    return <>{children}</>;
-  }
+  const tId = currentTournament.id;
+  const isPrivate = !!currentTournament.is_private;
+  const isAdminMode = mode === "admin";
 
-  // Admins and the room creator (owner) bypass room password
-  if (isAdmin || canManageRoom(currentTournament.created_by)) {
-    return <>{children}</>;
-  }
-
-  // Check session storage
-  const isUnlockedSession =
+  // Already an admin for this room (session) — any mode passes.
+  const isAdminSession =
     typeof window !== "undefined" &&
-    sessionStorage.getItem(`room_unlocked_${currentTournament.id}`) === "true";
+    sessionStorage.getItem(`room_admin_${tId}`) === "true";
 
-  if (isUnlockedSession || isUnlockedState) {
+  if (isAdmin || isAdminSession) {
+    return <>{children}</>;
+  }
+
+  // VIEW MODE: public rooms never need credentials.
+  if (!isAdminMode && !isPrivate) {
+    return <>{children}</>;
+  }
+
+  // VIEW MODE: private room previously unlocked with the room password.
+  const isRoomUnlocked =
+    typeof window !== "undefined" &&
+    sessionStorage.getItem(`room_unlocked_${tId}`) === "true";
+
+  if (!isAdminMode && (isRoomUnlocked || isUnlockedState)) {
     return <>{children}</>;
   }
 
@@ -51,24 +63,50 @@ export function RoomAccessGuard({ children }: RoomAccessGuardProps) {
     setIsVerifying(true);
 
     const inputPass = password.trim();
-    const isMatch = await supabaseService.verifyRoomPassword(currentTournament.id, inputPass);
 
-    if (isMatch) {
-      sessionStorage.setItem(`room_unlocked_${currentTournament.id}`, "true");
-      setIsUnlockedState(true);
-      toast({
-        title: "Room Unlocked",
-        description: `Access granted to [${currentTournament.name}].`,
-      });
+    if (isAdminMode) {
+      const granted = await grantRoomAdmin(currentTournament.room_code, inputPass);
+      if (granted) {
+        sessionStorage.setItem(`room_admin_${tId}`, "true");
+        sessionStorage.setItem(`room_unlocked_${tId}`, "true");
+        setIsUnlockedState(true);
+        toast({
+          title: "Admin Access Granted",
+          description: `Full admin access to [${currentTournament.name}].`,
+        });
+      } else {
+        toast({
+          title: "Access Denied",
+          description: "Incorrect admin password for this room.",
+          variant: "destructive",
+        });
+      }
     } else {
-      toast({
-        title: "Access Denied",
-        description: "Incorrect password for this private room.",
-        variant: "destructive",
-      });
+      const ok = await supabaseService.verifyRoomPassword(tId, inputPass);
+      if (ok) {
+        sessionStorage.setItem(`room_unlocked_${tId}`, "true");
+        setIsUnlockedState(true);
+        toast({
+          title: "Room Unlocked",
+          description: `You can now view [${currentTournament.name}].`,
+        });
+      } else {
+        toast({
+          title: "Access Denied",
+          description: "Incorrect room password for this private room.",
+          variant: "destructive",
+        });
+      }
     }
     setIsVerifying(false);
   };
+
+  const title = isAdminMode
+    ? currentTournament.name
+    : `Private Room · ${currentTournament.name}`;
+  const description = isAdminMode
+    ? "Enter this room's admin password to access the full admin console (players, teams, auction & more)."
+    : "Enter this room's password (set by the admin during setup) to view the auction room.";
 
   return (
     <div className="min-h-screen bg-[#0f1629] text-white flex items-center justify-center p-4">
@@ -76,13 +114,24 @@ export function RoomAccessGuard({ children }: RoomAccessGuardProps) {
         style={{ backgroundColor: "#181820" }}
         className="w-full max-w-md bg-[#181820] border border-white/10 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl relative overflow-hidden font-['Work_Sans',Helvetica]"
       >
-        <div className="text-left space-y-1.5 mb-4">
-          <h2 className="text-base sm:text-lg font-bold text-white tracking-tight leading-snug">
-            Unlock {currentTournament.name}?
+        <div className="text-center">
+          <div className="mx-auto mb-4 w-14 h-14 rounded-2xl bg-[#fe6804]/15 border border-[#fe6804]/40 flex items-center justify-center">
+            <Shield className="w-7 h-7 text-[#fe6804]" />
+          </div>
+          <h2 className="text-base sm:text-lg font-bold text-white tracking-tight leading-snug mb-1.5">
+            {title}
           </h2>
-          <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed font-normal">
-            This auction room is private. Enter the room access password to view teams, rosters, and live bidding.
+          <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed font-normal mb-5">
+            {description}
           </p>
+
+          {isAuthenticated && (
+            <p className="text-[11px] text-zinc-400 mb-3">
+              Signed in as {role === "admin" ? "Admin" : "User"} — {isAdminMode
+                ? "but admins must still enter this room's admin password."
+                : "but private rooms still need their password to view."}
+            </p>
+          )}
         </div>
 
         <form onSubmit={handleUnlock} className="space-y-4">
@@ -91,7 +140,7 @@ export function RoomAccessGuard({ children }: RoomAccessGuardProps) {
               type={showPassword ? "text" : "password"}
               required
               autoFocus
-              placeholder="Enter room password..."
+              placeholder={isAdminMode ? "Enter admin password..." : "Enter room password..."}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="bg-[#272732] border border-white/10 text-white h-10 px-3.5 rounded-xl text-sm focus:border-[#fe6804] pr-10"
@@ -119,7 +168,7 @@ export function RoomAccessGuard({ children }: RoomAccessGuardProps) {
               disabled={isVerifying}
               className="px-5 py-1.5 rounded-full text-xs sm:text-sm font-semibold bg-[#fe6804] hover:bg-[#e05b03] text-white shadow-md shadow-orange-500/20 transition-all active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
             >
-              {isVerifying ? "Verifying..." : "Unlock & Enter"}
+              {isVerifying ? "Verifying..." : isAdminMode ? "Unlock & Enter" : "View Room"}
             </button>
           </div>
         </form>

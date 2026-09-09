@@ -105,7 +105,7 @@ export function SignUpPage() {
   return (
     <AuthLayout
       eyebrow="Get Started"
-      title="Create Your Organizer Account"
+      title="Create Your Account"
       subtitle="Sign up with a valid email to host your own tournament auction room and manage its credentials."
       cardBadge={
         <div className="w-16 h-16 rounded-2xl bg-[#fe6804]/15 border border-[#fe6804]/40 shadow-[0_0_30px_rgba(254,104,4,0.25)] flex items-center justify-center">
@@ -119,7 +119,7 @@ export function SignUpPage() {
           icon={User}
           value={username}
           onChange={setUsername}
-          placeholder="e.g. Tournament Organizer"
+          placeholder="e.g. Tournament Admin"
           autoComplete="username"
         />
 

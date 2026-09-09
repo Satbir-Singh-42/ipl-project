@@ -438,7 +438,9 @@ export function AdminPlayers() {
     setIsImporting(true);
     try {
       const text = await file.text();
-      const lines = text.split(/\r\n|\n|\r/).filter((l) => l.trim());
+      // Strip a UTF-8 BOM and normalise line endings before parsing.
+      const cleanText = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+      const lines = cleanText.split(/\r\n|\n|\r/).filter((l) => l.trim());
       if (lines.length < 2) {
         toast({
           title: "CSV file is empty or has no data rows",
@@ -448,29 +450,39 @@ export function AdminPlayers() {
         return;
       }
 
-      const headers = parseCSVLine(lines[0]).map((h) => h.toLowerCase().trim());
-      const nameIdx = headers.findIndex((h) => h.includes("name") || h.includes("player"));
-      const roleIdx = headers.findIndex(
-        (h) => h.includes("role") || h.includes("specialism") || h.includes("type") || h.includes("cat")
+      const parseAdjusted = (line: string) =>
+        line.includes("\t") && !line.includes(",")
+          ? line.split("\t").map((c) => c.trim().replace(/^"|"$/g, "").replace(/""/g, '"'))
+          : parseCSVLine(line);
+
+      const headers = parseAdjusted(lines[0]).map((h) =>
+        h.toLowerCase().trim().replace(/"/g, ""),
       );
-      const countryIdx = headers.findIndex(
-        (h) => h.includes("country") || h.includes("nation") || h.includes("nationality")
-      );
-      const ageIdx = headers.findIndex((h) => h.includes("age"));
-      const matchesIdx = headers.findIndex((h) => h.includes("match") || h.includes("t20"));
-      const runsIdx = headers.findIndex((h) => h === "runs" || h.includes("run"));
-      const srIdx = headers.findIndex((h) => h === "batting_sr" || h.includes("strike") || h === "sr");
-      const wicketsIdx = headers.findIndex((h) => h === "wickets" || h.includes("wkt") || h.includes("wick"));
-      const econIdx = headers.findIndex((h) => h === "economy" || h.includes("econ") || h === "eco");
-      const pointsIdx = headers.findIndex(
-        (h) => h.includes("point") || h.includes("eval") || h.includes("rating")
-      );
-      const priceIdx = headers.findIndex(
-        (h) => h.includes("price") || h.includes("base") || h.includes("cost") || h.includes("reserve")
-      );
-      const imageIdx = headers.findIndex(
-        (h) => h.includes("image") || h.includes("photo") || h.includes("img")
-      );
+
+      // Resolve a header index by preferring exact matches, then substring
+      // matches. Loose `includes()` on ambiguous words like "name"/"player" can
+      // grab the wrong column (e.g. an ID column), so exact names win first.
+      const colIndex = (candidates: string[]): number => {
+        const exact = headers.findIndex((h) => candidates.includes(h));
+        if (exact !== -1) return exact;
+        const partial = headers.findIndex((h) =>
+          candidates.some((c) => h.includes(c)),
+        );
+        return partial;
+      };
+
+      const nameIdx = colIndex(["name", "player name", "player_name", "player", "fullname", "full_name"]);
+      const roleIdx = colIndex(["role", "specialism", "specialism1", "position", "player type", "type", "category"]);
+      const countryIdx = colIndex(["country", "nation", "nationality", "nationality/team"]);
+      const ageIdx = colIndex(["age", "player age"]);
+      const matchesIdx = colIndex(["t20_matches", "t20 matches", "t20s", "t20", "matches", "matches played", "caps"]);
+      const runsIdx = colIndex(["runs", "total runs", "t20_runs"]);
+      const srIdx = colIndex(["batting_sr", "batting strike rate", "strike rate", "strike rate (sr)", "sr", "batting sr"]);
+      const wicketsIdx = colIndex(["wickets", "wkt", "wickets taken"]);
+      const econIdx = colIndex(["economy", "econ", "eco", "economy rate"]);
+      const pointsIdx = colIndex(["eval_points", "eval points", "points", "eval", "rating"]);
+      const priceIdx = colIndex(["base_price", "base price", "price", "reserve price", "cost", "reserve"]);
+      const imageIdx = colIndex(["image_url", "image url", "image", "photo", "img", "picture"]);
 
       if (nameIdx === -1) {
         toast({
@@ -487,7 +499,7 @@ export function AdminPlayers() {
       const playerRows = lines
         .slice(1)
         .map((line) => {
-          const cols = parseCSVLine(line);
+          const cols = parseAdjusted(line);
           const rawPrice = cols[priceIdx] || "";
           const cleanPrice = parseFloat(rawPrice.replace(/[^0-9.]/g, ""));
           const rawRuns = runsIdx !== -1 ? parseInt(cols[runsIdx]) : undefined;

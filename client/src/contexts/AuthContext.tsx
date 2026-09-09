@@ -25,6 +25,7 @@ interface AuthContextType {
     password: string,
   ) => Promise<{ needsEmailConfirmation: boolean }>;
   logout: () => Promise<void>;
+  grantRoomAdmin: (roomCode: string, adminPassword: string) => Promise<boolean>;
   isAdmin: boolean;
   isAuthenticated: boolean;
   canManageRoom: (createdBy?: string | null) => boolean;
@@ -262,6 +263,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsMasterAdmin(false);
   };
 
+  const grantRoomAdmin = async (roomCode: string, adminPassword: string): Promise<boolean> => {
+    const roomAuth = await supabaseService.verifyRoomAdminCredentials(roomCode, adminPassword);
+    if (!roomAuth.success || !roomAuth.tournament) return false;
+
+    const target = roomAuth.tournament;
+    const sessionData = {
+      id: `room_admin_${target.id}`,
+      role: "admin" as UserRole,
+      displayName: `${target.name} Host`,
+      email: `${target.room_code.toLowerCase()}@admin.local`,
+      isMasterAdmin: false,
+      tournamentId: target.id,
+    };
+    localStorage.setItem("ipl_custom_auth_session", JSON.stringify(sessionData));
+    supabaseService.setActiveTournamentId(target.id);
+    setUser({ id: `room_admin_${target.id}`, email: sessionData.email } as User);
+    setRole("admin");
+    setDisplayName(`${target.name} Host`);
+    setIsMasterAdmin(false);
+    setScopedTournamentId(target.id);
+    return true;
+  };
+
   const canManageRoom = (createdBy?: string | null): boolean => {
     return role === "admin" || (!!user?.id && createdBy === user.id);
   };
@@ -278,6 +302,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         signUp,
         logout,
+        grantRoomAdmin,
         isAdmin: role === "admin",
         isAuthenticated: !!user && !!role,
         canManageRoom,
