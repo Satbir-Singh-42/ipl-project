@@ -299,11 +299,9 @@ export function TournamentsPage() {
                         if (canManageTournament) {
                           handleEnterRoom(tournament, "auction");
                         } else {
-                          toast({
-                            title: "Auction Locked",
-                            description: "Only the room creator or an admin can start the auction.",
-                            variant: "destructive",
-                          });
+                          setLocation(
+                            `/login?next=${encodeURIComponent(`/room/${tournament.room_code}/auction`)}`,
+                          );
                         }
                       }}
                       className={`flex-1 font-bold text-xs uppercase border tracking-wider h-9 rounded-xl transition-all ${

@@ -12,12 +12,15 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { login, isAuthenticated, role } = useAuth();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { toast } = useToast();
+
+  const nextPath = new URLSearchParams(window.location.search).get("next");
+  const redirectTarget = nextPath || (role === "admin" ? "/admin" : "/create");
 
   // Redirect if already logged in
   if (isAuthenticated) {
-    return <Redirect to={role === "admin" ? "/admin" : "/create"} replace />;
+    return <Redirect to={redirectTarget} replace />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
