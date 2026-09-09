@@ -119,7 +119,7 @@ export function SignUpPage() {
           icon={User}
           value={username}
           onChange={setUsername}
-          placeholder="e.g. ISTE Organizer"
+          placeholder="e.g. Tournament Organizer"
           autoComplete="username"
         />
 

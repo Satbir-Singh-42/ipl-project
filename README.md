@@ -2,7 +2,7 @@
 
 A production-grade, multi-tenant web application for running and managing a private Indian Premier League player auction. It combines a live bidding screen, real-time team/player dashboards, an admin panel, and tournament-room management — all backed by **Supabase** for data persistence and realtime sync.
 
-Built by ISTE for the IPL 2025 Mega Auction.
+Built for the IPL 2025 Mega Auction.
 
 ---
 
@@ -413,6 +413,5 @@ This project is licensed under the MIT License.
 
 ## Acknowledgments
 
-- **ISTE** — branding, logo, and the vision behind the dashboard.
 - **IPL** — the incredible cricket league this tool supports.
 - The open-source community — React, Vite, Tailwind CSS, shadcn/ui, Framer Motion, TanStack Query, and the Supabase team.
