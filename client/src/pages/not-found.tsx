@@ -83,7 +83,7 @@ export default function NotFound() {
           transition={{ duration: 0.8, delay: 0.4 }}
           className="text-center mt-6">
           <p className="text-white/60 text-sm">
-            IPL 2025 Player Auction Dashboard
+            IPL Player Auction Dashboard
           </p>
         </motion.div>
       </motion.div>

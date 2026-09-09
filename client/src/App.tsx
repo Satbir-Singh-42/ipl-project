@@ -30,10 +30,22 @@ const AuctionPage = lazy(() => import("@/pages/AuctionPage"));
 const LandingPage = lazy(() =>
   import("@/pages/LandingPage").then((m) => ({ default: m.LandingPage })),
 );
+const CreateRoomPage = lazy(() =>
+  import("@/pages/CreateRoomPage").then((m) => ({ default: m.CreateRoomPage })),
+);
+const TournamentsPage = lazy(() =>
+  import("@/pages/TournamentsPage").then((m) => ({ default: m.TournamentsPage })),
+);
+const LegalPage = lazy(() =>
+  import("@/pages/LegalPage").then((m) => ({ default: m.LegalPage })),
+);
 
 // Lazy-loaded auth pages
 const LoginPage = lazy(() =>
   import("@/pages/LoginPage").then((m) => ({ default: m.LoginPage })),
+);
+const SignUpPage = lazy(() =>
+  import("@/pages/SignUpPage").then((m) => ({ default: m.SignUpPage })),
 );
 
 // Lazy-loaded admin pages
@@ -112,6 +124,10 @@ function RoomAuction({ params }: { params?: { roomCode?: string } }) {
 function Router() {
   const [location] = useLocation();
 
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location]);
+
   return (
     <Suspense fallback={<LoadingPage />}>
       <AnimatePresence mode="wait" initial={false}>
@@ -120,10 +136,21 @@ function Router() {
             {/* Multi-Tournament SaaS Landing Page (Root Entry) */}
             <Route path="/" component={LandingPage} />
             <Route path="/landing" component={LandingPage} />
-            <Route path="/portal" component={LandingPage} />
-            <Route path="/tournaments" component={LandingPage} />
-            <Route path="/rooms" component={LandingPage} />
-            <Route path="/lobby" component={LandingPage} />
+
+            {/* Tournament / Room listing */}
+            <Route path="/portal" component={TournamentsPage} />
+            <Route path="/tournaments" component={TournamentsPage} />
+            <Route path="/rooms" component={TournamentsPage} />
+            <Route path="/lobby" component={TournamentsPage} />
+
+            {/* Create Room / Legal page */}
+            <Route path="/create" component={CreateRoomPage} />
+            <Route
+              path="/create-room"
+              component={() => <CreateRoomPage />}
+            />
+            <Route path="/privacy-policy" component={() => <LegalPage type="privacy" />} />
+            <Route path="/terms" component={() => <LegalPage type="terms" />} />
 
             {/* Room-Specific URLs with room code in the URL */}
             <Route path="/room/:roomCode" component={RoomDashboard} />
@@ -169,6 +196,7 @@ function Router() {
               </RoomAccessGuard>
             </Route>
             <Route path="/login" component={LoginPage} />
+            <Route path="/signup" component={SignUpPage} />
 
             {/* Protected: Auction (admin only) */}
             <Route path="/auction">

@@ -100,7 +100,7 @@ export const GuidelinesView = (): JSX.Element => {
               <span className="text-xs font-bold tracking-wider text-[#fe6804] uppercase font-['Work_Sans',sans-serif]">Official Guidelines & Rules</span>
             </div>
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-white mb-3 tracking-tight font-['Work_Sans',sans-serif] drop-shadow-md">
-              IPL 2025 Player Auction System
+              IPL Player Auction System
             </h1>
             <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto leading-relaxed font-medium">
               Complete interactive reference for auction mechanics, team composition limits, keyboard shortcuts, and real-time live sync.

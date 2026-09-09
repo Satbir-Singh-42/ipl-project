@@ -56,7 +56,7 @@ export function AdminHeader({ activeTab, title, children }: AdminHeaderProps) {
               className="[font-family:'Work_Sans',Helvetica] font-bold text-sm sm:text-base md:text-lg lg:text-xl 2xl:text-2xl leading-tight tracking-[0] cursor-pointer whitespace-nowrap shrink-0"
               onClick={() => setLocation(role === "admin" ? "/admin" : "/")}
             >
-              <span className="text-white"> IPL 2025 </span>
+              <span className="text-white"> IPL </span>
               <span className="text-[#fe6804]">Player Auction</span>
             </h1>
           </div>

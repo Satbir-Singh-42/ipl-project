@@ -254,6 +254,68 @@ class SupabaseService {
     }
   }
 
+  async signUpUser(input: {
+    username: string;
+    email: string;
+    password: string;
+  }): Promise<{
+    user: { id: string; email: string } | null;
+    needsEmailConfirmation: boolean;
+  }> {
+    const email = (input.email || "").trim().toLowerCase();
+    const password = input.password || "";
+    const username = (input.username || "").trim();
+
+    if (!email || !password) {
+      throw new Error("Email and password are required.");
+    }
+    if (password.length < 6) {
+      throw new Error("Password must be at least 6 characters long.");
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { display_name: username, full_name: username } },
+      });
+
+      if (error) throw new Error(error.message);
+
+      const authUser = data.user;
+      if (authUser) {
+        const { error: metaError } = await supabase.from("users_meta").upsert(
+          {
+            auth_id: authUser.id,
+            email: authUser.email || email,
+            username,
+            display_name: username,
+            role: "organizer",
+          },
+          { onConflict: "auth_id" },
+        );
+        if (metaError) throw new Error(metaError.message);
+      }
+
+      let needsEmailConfirmation = false;
+      if (!data.session && authUser) {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (signInError) needsEmailConfirmation = true;
+      }
+
+      return {
+        user: authUser ? { id: authUser.id, email: authUser.email || email } : null,
+        needsEmailConfirmation,
+      };
+    } catch (err) {
+      if (err instanceof Error) throw err;
+      throw new Error("Sign up failed. Please try again.");
+    }
+  }
+
   async verifyRoomAdminCredentials(identifier: string, passwordInput: string): Promise<{ success: boolean; tournament?: Tournament }> {
     const cleanId = identifier.trim();
     const cleanPass = passwordInput.trim();
@@ -333,6 +395,7 @@ class SupabaseService {
     is_private?: boolean;
     room_password?: string;
     admin_password?: string;
+    created_by?: string | null;
   }): Promise<Tournament> {
     const name = tournament.name.trim();
     if (!name) {
@@ -426,6 +489,13 @@ class SupabaseService {
         is_private: tournament.is_private || false,
         room_password: tournament.room_password?.trim() || "",
         admin_password: tournament.admin_password?.trim() || "admin123",
+        created_by:
+          tournament.created_by &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+            tournament.created_by,
+          )
+            ? tournament.created_by
+            : null,
       })
       .select()
       .single();
@@ -922,21 +992,6 @@ class SupabaseService {
       ? await query.eq("id", playerNameOrId)
       : await query.eq("name", playerNameOrId);
 
-    if (error) {
-      // Fallback if schema expects 'available'
-      const fallback = supabase
-        .from("players")
-        .update({
-          status: "available",
-          sold_price: 0,
-          sold_to_team: null,
-          sold_at: null,
-        })
-        .eq("tournament_id", tId);
-      if (isId) await fallback.eq("id", playerNameOrId);
-      else await fallback.eq("name", playerNameOrId);
-    }
-
     // 2. Remove all unsold and sold log entries for this player in this tournament
     if (isId) {
       await supabase
@@ -984,7 +1039,7 @@ class SupabaseService {
       // Remove the sold log
       await supabase.from("auction_log").delete().eq("id", lastLog.id);
     } else if (lastLog.action === "unsold") {
-      // Return unsold player back to available (pending) status
+      // Return unsold player back to pending status
       await supabase
         .from("players")
         .update({
@@ -1030,8 +1085,8 @@ class SupabaseService {
       .eq("tournament_id", tId);
     if (error) throw new Error(`Failed to update player: ${error.message}`);
 
-    // If status is changed to pending or available, remove any unsold logs for this player
-    if (data.status === "pending" || data.status === "available") {
+    // If status is changed to pending, remove any unsold logs for this player
+    if (data.status === "pending") {
       await supabase
         .from("auction_log")
         .delete()
@@ -1680,7 +1735,7 @@ class SupabaseService {
 
   async resetAuction(tournamentId?: number): Promise<void> {
     const tId = tournamentId ?? this.activeTournamentId;
-    const { error } = await supabase
+    await supabase
       .from("players")
       .update({
         status: "pending",
@@ -1689,18 +1744,6 @@ class SupabaseService {
         sold_at: null,
       })
       .eq("tournament_id", tId);
-
-    if (error) {
-      await supabase
-        .from("players")
-        .update({
-          status: "available",
-          sold_price: 0,
-          sold_to_team: null,
-          sold_at: null,
-        })
-        .eq("tournament_id", tId);
-    }
 
     await supabase.from("auction_log").delete().eq("tournament_id", tId);
   }
@@ -1737,23 +1780,9 @@ class SupabaseService {
         .select("id");
 
       let updatedCount = data ? data.length : 0;
-
       if (error) {
-        // Fallback in case schema allows 'available'
-        const fallback = await supabase
-          .from("players")
-          .update({
-            status: "available",
-            sold_price: 0,
-            sold_to_team: null,
-            sold_at: null,
-          })
-          .eq("tournament_id", tId)
-          .or("status.eq.unsold,status.eq.Unsold")
-          .select("id");
-        if (fallback.data) {
-          updatedCount = fallback.data.length;
-        }
+        console.error("clearAllUnsold update error:", error.message);
+        return 0;
       }
 
       await supabase

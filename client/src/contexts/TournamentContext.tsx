@@ -26,6 +26,7 @@ interface CreateTournamentInput {
   is_private?: boolean;
   room_password?: string;
   admin_password?: string;
+  created_by?: string | null;
   cloneFromTemplate?: boolean;
 }
 

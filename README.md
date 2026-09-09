@@ -1,689 +1,417 @@
-# 🏏 IPL 2025 Player Auction Dashboard
+# IPL 2025 Player Auction Dashboard
 
-A modern, real-time web application for tracking and managing IPL (Indian Premier League) 2025 player auction data. Built with cutting-edge web technologies, it provides live auction results, team statistics, comprehensive player information, and an interactive auction management interface through direct Google Sheets integration.
+A production-grade, multi-tenant web application for running and managing a private Indian Premier League player auction. It combines a live bidding screen, real-time team/player dashboards, an admin panel, and tournament-room management — all backed by **Supabase** for data persistence and realtime sync.
 
-## ✨ Features
+Built by ISTE for the IPL 2025 Mega Auction.
 
-### 🎯 Core Functionality
+---
 
-- **Real-time Auction Data** - Live integration with Google Sheets for up-to-the-minute auction results
-- **Interactive Auction Page** - Full-featured auction management interface with player viewer and bidding system
-- **Team Overview** - Comprehensive team cards showing funds, players, and statistics in ranking order
-- **Player Management** - Detailed views for sold and unsold players with advanced filtering
-- **Live Leaderboard** - Dynamic team rankings with circular rank indicators based on points, budget, and performance
-- **Playing XI Selection** - Interactive team selection with validation and CSV export for each team
-- **Foreign Players Tracking** - Dedicated column showing overseas player count for each team
-- **Fully Responsive Design** - Optimized for desktop, tablet, and mobile devices
-- **Custom Branding** - ISTE logo favicon and IPL-themed design
+## Table of Contents
 
-### 🎪 Auction Page Features
+- [Overview](#overview)
+- [Core Features](#core-features)
+- [Architecture](#architecture)
+- [Multi-Tournament Rooms](#multi-tournament-rooms)
+- [Getting Started](#getting-started)
+- [Environment Variables](#environment-variables)
+- [Database Schema](#database-schema)
+- [Project Structure](#project-structure)
+- [Routes](#routes)
+- [Auction Experience](#auction-experience)
+- [Admin Panel](#admin-panel)
+- [Configuration](#configuration)
+- [Development](#development)
+- [Deployment](#deployment)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
 
-The **Auction Page** (`/auction`) is the centerpiece of this application, providing a complete auction management experience:
+---
 
-#### Live Auction Management
-- **Real-time Player Cards** - Browse all active players with images, stats, and details
-- **Search & Filter** - Search across player names, roles, nations, and teams
-  - Works for both active and sold players simultaneously
-- **Player Viewer Modal** - Full-screen player details with:
-  - High-quality player images or initials fallback
-  - Complete stats: Age, T20 Matches, Base Price, Points
-  - Current bid tracker with live updates
-  - Overseas player indicator
-  - Sold status and team assignment
+## Overview
 
-#### Interactive Bidding System
-- **Dynamic Bid Increment** - Configurable bid increments
-- **Tap to Increment (Mobile Only)** - Tap the bid area to increase bid amount on mobile devices (768px or smaller)
-  - Desktop users see read-only bid display
-  - Mobile users can tap to increment with visual feedback
-  - Responsive detection with automatic adjustment on window resize
-- **Quick Actions** - Mark players as Sold or Unsold with visual effects:
-  - 🎉 **Sold**: Celebration confetti animation
-  - ❌ **Unsold**: UNSOLD stamp with animation
-- **Automatic Navigation** - Smooth transition to next player (1-second delay after action)
-- **Undo Functionality** - Quick undo last action with 'R' key
+The IPL 2025 Player Auction Dashboard lets an auctioneer, organizers, and viewers manage and watch a franchise auction in real time. Administrators can create tournament "rooms", register teams, import players, run the auction, and track budgets — while the public dashboard shows live team cards, sold/unsold player pools, a leaderboard, and Playing XI selection.
 
-#### Advanced Navigation
-- **Keyboard Shortcuts**:
-  - **R** - Quick Undo last action
-  - **Z** - Manual sync with Google Sheets
-  - **← / →** - Navigate between players (instant)
-  - **S** - Mark as Sold (with animation delay)
-  - **U** - Mark as Unsold (with animation delay)
-  - **Escape** - Close player viewer
-  - **Space/Enter/Any Key** - Increase current bid
-- **Touch Gestures** (Mobile):
-  - **Swipe Left** - Next player
-  - **Swipe Right** - Previous player
-  - Minimum 50px swipe distance for accuracy
+Every tournament room is fully isolated (multi-tenancy), so a single deployment can host multiple independent auctions.
 
-#### Visual Enhancements
-- **Smooth Animations** - Framer Motion powered transitions:
-  - Fade effects after sold/unsold actions
-  - Scale animations during transitions
-  - Entrance/exit animations for modals
-- **Background Effects** - Beautiful blur and overlay effects
-- **Confetti Celebration** - Multi-burst confetti on successful sale
-- **Status Indicators** - Live counter showing Active, Sold, and Unsold counts
+---
 
-#### Data Management
-- **Local Storage** - Session persistence for auction state
-- **Google Sheets Sync** - Auto-sync every 60 seconds
-- **Manual Refresh** - Force sync with 'Z' key
-- **Reset Functionality** - Clear local data and restore from sheet
-- **Restore Players** - Move sold players back to active (for non-sheet entries)
+## Core Features
 
-#### Mobile Optimization
-- **Responsive Layout** - Adapts to all screen sizes
-- **Touch-Friendly** - Large tap targets and swipe gestures
-- **Mobile-Only Tap to Increment** - Bid increment via tap only enabled on screens ≤768px
-  - Automatic mobile detection with window resize listener
-  - No click handler on desktop for cleaner UX
-  - Conditional UI elements (increment hints shown only on mobile)
-- **Compact Stats Display** - Abbreviated labels on small screens (A/S/U)
-- **Flexible Buttons** - Stack vertically on mobile, horizontal on desktop
-- **Optimized Typography** - Scales from mobile to desktop
+### Public Dashboard
+- **Team Overview** — Team cards showing remaining funds, squad size, and overseas player counts, ranked by performance.
+- **Auction Players** — Searchable, sortable table of all players currently in the auction pool.
+- **Sold Players** — Filterable list of purchased players with team assignment, final price, and points.
+- **Leaderboard** — Live team rankings sorted by points, remaining budget, and name.
+- **Guidelines** — Configurable tournament rules and squad requirements rendered from the DB.
+- **Team Dashboards** — Per-team detail pages with rosters and Playing XI.
+- **Playing XI Selection** — Interactive, validated selection with CSV export and a visual cricket-field formation.
 
-### 🚀 Technical Features
+### Auction Management (`/auction`)
+- **Live Player Cards** — Browse players with stats, images, base price, and live bid tracker.
+- **Bidding** — Increment bids via buttons; on mobile (≤768px) tap-to-increment is enabled.
+- **Sold / Unsold** — One-click actions with confetti on sale and an "UNSOLD" stamp on skips.
+- **Keyboard Shortcuts** — `R` undo, `S` sold, `U` unsold, `←/→` navigate, `Escape` close, `Space/Enter` increment bid.
+- **Touch Gestures** — Swipe left/right to move between players on mobile.
+- **Undo** — Revert the last action safely (logged in the DB for audit).
 
-- **Direct Data Fetching** - No backend database required - fetches data directly from Google Sheets
-- **Smart Caching** - 5-second client-side cache with automatic refresh intervals
-- **Type-Safe** - Full TypeScript implementation with runtime validation
-- **Modern UI** - Beautiful interface built with Tailwind CSS and shadcn/ui
-- **Smooth Animations** - Framer Motion powered transitions and interactions
-- **Real-time Updates** - Background data synchronization every 5 seconds (home) / 60 seconds (auction)
+### Admin Panel (`/admin`)
+- **Tournaments / Rooms** — Create, clone, lock, and manage tournament rooms with password protection.
+- **Players** — CRUD, bulk CSV import, image upload, and role normalization.
+- **Teams** — CRUD with branding (logo, colors, gradient) and budget.
+- **Pools / Sets** — Organize players into auction sets, auto-group by role, reorder, and manage unsold pools.
+- **Leaderboard & Export** — View standings and export CSV reports.
 
-## 📊 Data Sources
+### Accounts, Sign-Up & Room Hosting
+- **Create an account** (`/signup`) — Public sign-up with username, email, and password (Supabase Auth-backed, plus a `users_meta` profile row with the `organizer` role).
+- **Sign in** (`/login`) — Email/password, master admin (`admin`), or room admin credentials (`room code` + admin password).
+- **Gated room creation** — Visiting `/create` requires a signed-in account. Guests see a sign-up/login gate before the room form.
+- **Ownership** — Rooms record their creator's `auth_id` in `tournaments.created_by`.
 
-The application integrates with Google Sheets to fetch three types of data:
+### Realtime & Persistence
+- **Supabase Realtime** — Tables are subscribed so dashboards and the auction stay in sync across devices.
+- **Row-Level Security** — Public read, authenticated writes, enforced at the database.
+- **TanStack Query** — Caching and background refetching with configurable intervals.
 
-### 1. Teams & Budget Sheet
-- Team names and identifiers
-- Initial budget allocations
-- Current remaining funds
-- Total players count
-- Foreign players count
-- Total team points
+---
 
-### 2. Players Catalogue
-- Complete player database
-- Player names and nationalities
-- Base prices and categories
-- Player roles and specializations
-- Team assignments (if sold)
-- Player images and statistics
+## Architecture
 
-### 3. Auctioneer Sheet
-- Live auction results
-- Final bid amounts
-- Player status (sold/unsold)
-- Real-time updates during auction
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         React 18 + Vite                         │
+│         Wouter routing · Framer Motion · Tailwind CSS           │
+└───────────────┬─────────────────────────────────────────────────┘
+                │  @supabase/supabase-js
+                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         Supabase (PostgreSQL)                   │
+│  tournaments · players · teams · pools · auction_log            │
+│  auction_settings · playing_xi · users_meta                    │
+│  Realtime replication · Row-Level Security · Storage buckets    │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-**Note**: The application expects some 400 errors during sheet fetching as it tries multiple sheet identifiers to find the correct data source. This is normal behavior and doesn't affect functionality.
+- **Frontend only** — no custom backend server. All persistence and realtime run through Supabase.
+- **Service layer** — `client/src/services/supabaseService.ts` centralizes all database access and converts raw rows into typed domain models.
+- **Realtime tables** — `tournaments`, `players`, `teams`, `pools`, and `auction_settings` are added to the `supabase_realtime` publication so the UI updates live.
 
-## 🚀 Quick Start
+---
+
+## Multi-Tournament Rooms
+
+Each tournament is an isolated room with its own data and a shareable URL.
+
+- **Room URL patterns**
+  - `/room/:roomCode` — public dashboard
+  - `/room/:roomCode/auction` — admin auction (password protected)
+  - `/t/:roomCode` — shortcut alias
+- Rooms can be **public**, **private (password protected)**, or **locked** by the admin.
+- Data is scoped everywhere by `tournament_id`, and the active room is tracked in URL + context + local storage.
+- The landing page (`/`) is a marketing/advertising page with a hero, features, and CTAs:
+  - **Create a room** → `/create` (dedicated room-creation module)
+  - **Explore live rooms** → `/tournaments` (dedicated room-listing page with stats, privacy badges, and enter/auction actions)
+- A **Privacy Policy** (`/privacy-policy`) and **Terms & Conditions** (`/terms`) page are linked from every page footer.
+
+---
+
+## Getting Started
 
 ### Prerequisites
 
-- Node.js 18+ (Node.js 20 recommended)
-- npm package manager
-- Google Sheets with publicly accessible data (CSV export enabled)
+- **Node.js 18+** (Node 20 + recommended)
+- **npm**
+- A Supabase project (free tier is sufficient)
 
-### Installation
-
-1. **Clone the repository**
+### 1. Clone & Install
 
 ```bash
 git clone <repository-url>
-cd ipl-auction-dashboard
-```
-
-2. **Install dependencies**
-
-```bash
+cd IPL_Auction_2025
 npm install
 ```
 
-3. **Start the development server**
+### 2. Configure Supabase
+
+Create a `.env` file in the project root:
+
+```env
+VITE_SUPABASE_URL=your_supabase_project_url_here
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key_here
+```
+
+> Get these from the Supabase dashboard: **Project Settings → API**.
+
+### 3. Apply the Database Schema
+
+Open the **SQL Editor** in your Supabase project, paste the contents of
+[`supabase-schema.sql`](./supabase-schema.sql), and run it. This creates all tables,
+indexes, triggers, RLS policies, realtime subscriptions, storage buckets, and seeds the
+default IPL 2025 tournament with 12 teams.
+
+### 4. Run the App
 
 ```bash
 npm run dev
 ```
 
-4. **Open your browser**
-   Navigate to `http://localhost:5000`
+Open `http://localhost:5173` (Vite default). Navigate to `/room/IPL2025` to enter the
+default seeded tournament, or use the landing page.
 
-## 📁 Project Structure
+> The default room runs under room code `IPL2025` (admin password `admin123`). Change
+> these for production.
 
-```
-├── client/                          # Frontend React application
-│   ├── src/
-│   │   ├── components/              # Reusable UI components
-│   │   │   ├── ui/                  # shadcn/ui component library (40+ components)
-│   │   │   ├── GuidelinesView.tsx   # Tournament guidelines display
-│   │   │   ├── LeaderboardView.tsx  # Team rankings with circular indicators
-│   │   │   ├── LoadingPage.tsx      # Full-screen loading animation
-│   │   │   ├── PageTransition.tsx   # Smooth page transitions
-│   │   │   ├── PlayerCards.tsx      # Grid of player cards
-│   │   │   ├── PlayerDetailsModal.tsx # Full player detail popup
-│   │   │   └── PlayerTable.tsx      # Sortable player data table
-│   │   ├── config/                  # Application configuration
-│   │   │   ├── README.md            # Team branding setup guide
-│   │   │   └── teamBranding.ts      # Team logos & colors config
-│   │   ├── hooks/                   # Custom React hooks
-│   │   │   ├── use-mobile.tsx       # Mobile detection hook
-│   │   │   ├── use-toast.ts         # Toast notification hook
-│   │   │   └── useIPLData.ts        # Google Sheets data fetching hook
-│   │   ├── lib/                     # Utility libraries
-│   │   │   ├── queryClient.ts       # TanStack Query setup & config
-│   │   │   └── utils.ts             # Helper functions (cn, formatters)
-│   │   ├── pages/                   # Full page components
-│   │   │   ├── sections/            # Page subsections
-│   │   │   │   ├── PlayerAuctionSection.tsx   # Player cards grid
-│   │   │   │   └── PlayerDetailsSection.tsx   # Player details layout
-│   │   │   ├── AuctionPage.tsx      # Main auction management interface
-│   │   │   ├── ElementLight.tsx     # Homepage dashboard
-│   │   │   ├── not-found.tsx        # 404 error page
-│   │   │   ├── PlayingXI.tsx        # Playing XI team selection
-│   │   │   ├── TeamDashboard.tsx    # Individual team details page
-│   │   │   └── TeamsListing.tsx     # All teams overview
-│   │   ├── services/                # External service integrations
-│   │   ├── App.tsx                  # Main app with routing (Wouter)
-│   │   ├── index.css                # Global styles & Tailwind config
-│   │   └── main.tsx                 # React app entry point
-│   ├── public/                      # Public static files
-│   │   ├── images/                  # Image assets
-│   │   │   ├── auction/             # Auction page assets
-│   │   │   │   ├── background.png   # Auction backdrop image
-│   │   │   │   └── unsold.png       # UNSOLD stamp overlay
-│   │   │   └── teams/               # Team logos directory
-│   │   ├── favicon.ico              # ISTE logo favicon
-│   │   └── og-image.png             # Open Graph social preview
-│   └── index.html                   # HTML entry point with meta tags
-├── shared/                          # Shared across frontend/backend
-│   ├── schema.ts                    # TypeScript type definitions
-│   └── config.ts                    # Auction & Playing XI rules config
-├── attached_assets/                 # User-uploaded assets
-├── components.json                  # shadcn/ui component config
-├── package.json                     # Dependencies and npm scripts
-├── package-lock.json                # Locked dependency versions
-├── postcss.config.js                # PostCSS config for Tailwind
-├── tailwind.config.ts               # Tailwind theme customization
-├── tsconfig.json                    # TypeScript compiler options
-├── vite.config.ts                   # Vite bundler configuration
-├── vercel.json                      # Vercel deployment settings
-└── README.md                        # This file - complete documentation
-```
+---
 
-## 🎮 Usage Guide
+## Environment Variables
 
-### Main Pages
+| Variable                  | Required | Description                                          |
+| ------------------------- | -------- | ---------------------------------------------------- |
+| `VITE_SUPABASE_URL`       | ✅       | Your Supabase project URL                            |
+| `VITE_SUPABASE_ANON_KEY`  | ✅       | Your Supabase public (anon) API key                  |
 
-The dashboard features multiple pages accessible via navigation:
+Vite exposes only variables prefixed with `VITE_` to the client (`import.meta.env.VITE_*`).
+If credentials are missing, the app logs a warning and continues in a degraded state rather
+than crashing.
 
-#### 1. **HOME** (Overview Dashboard)
-- Team cards sorted by current ranking
-- Shows top 3 teams with medal indicators
-- Real-time budget tracking
-- Player count with foreign player limits
-- Team logos and branding
-- Click any card for detailed team view
+---
 
-#### 2. **AUCTION** (`/auction`)
-- **Interactive auction management interface**
-- Browse all active and sold players
-- Real-time bidding with current bid tracker
-- Mark players as Sold/Unsold with animations
-- Keyboard shortcuts and touch gestures
-- Auto-save auction state to local storage
-- Sync with Google Sheets every 60 seconds
+## Database Schema
 
-#### 3. **SOLD PLAYERS**
-- Complete list of all purchased players
-- Filter by team using dropdown
-- Sortable columns (name, team, sold amount, base price, nationality)
-- Search functionality
-- Real-time status updates
+The full schema lives in [`supabase-schema.sql`](./supabase-schema.sql). Summary:
 
-#### 4. **UNSOLD PLAYERS**
-- All available players not yet purchased
-- Detailed player information
-- Base price and category
-- Player roles and specializations
-- Searchable and sortable interface
+| Table              | Purpose                                                            |
+| ------------------ | ------------------------------------------------------------------ |
+| `tournaments`      | Multi-tenant rooms: name, slug, room code, passwords, settings, `created_by` (owner auth id) |
+| `pools`            | Auction sets/rounds per tournament                                 |
+| `players`          | Player catalogue with stats, role, base price, status, sold info   |
+| `teams`            | Franchises with branding (logo, colors) and starting budget        |
+| `auction_log`      | Immutable audit trail of every sold/unsold/undo action             |
+| `auction_settings` | Squad rules, multipliers, budgets, bid increments (one per room)   |
+| `playing_xi`       | Saved Playing XI selections per team                               |
+| `users_meta`       | Profiles for `admin` and `organizer` accounts (Supabase Auth id, username, role) |
 
-#### 5. **LEADERBOARD**
-- Complete team rankings table
-- Circular rank indicators with gradient styling
-- Sortable columns (Rank, Team, Total Spent, Budget, Players, Foreign Players, Points)
-- Multi-level ranking system based on points, budget, and team name
-- Color-coded data for easy reading
-- Updates every 5 seconds
+**Status model:** a player's lifecycle is `pending → sold` or `pending → unsold`, with
+`undo` returning them to `pending`.
 
-#### 6. **PLAYING XI SELECTION**
-- Access from individual team dashboard pages
-- Interactive player selection with drag-and-drop style interface
-- Real-time validation against IPL playing XI rules:
-  - Exactly 11 players required
-  - Batsmen: 2-5 players
-  - Wicket-Keepers: 1-3 players (at least 1 required)
-  - All-Rounders: at least 1
-  - Bowlers: at least 2
-  - Foreign players: maximum 4
-- Filter and sort players by role and points
-- Two-column layout - Rest of Squad and Playing XI side-by-side
-- CSV Export - Download validated playing XI
-- Local storage - Saves your selection automatically
-- Points tracking - Shows total points for selected XI
+---
 
-### Auction Page Keyboard Shortcuts
-
-#### Global Shortcuts (anytime)
-- **R** - Quick Undo (revert last sold/unsold action)
-- **Z** - Manual Sync with Google Sheets
-
-#### Player Viewer Shortcuts
-- **← Left Arrow** - Previous player (instant)
-- **→ Right Arrow** - Next player (instant)
-- **Escape** - Close player viewer
-- **S** - Mark as Sold (with confetti + 1s transition)
-- **U** - Mark as Unsold (with stamp + 1s transition)
-- **Any Key / Space / Enter** - Increase bid by increment
-
-**Note**: All shortcuts are disabled when typing in the search box.
-
-### Mobile Gestures (Auction Page)
-- **Swipe Left** - Navigate to next player
-- **Swipe Right** - Navigate to previous player
-- **Tap Player Card** - Open player viewer
-- **Tap Bid Area** - Increment current bid (mobile only, ≤768px)
-- **Tap Outside Modal** - Close viewer
-
-## 🛠️ Development
-
-### Available Scripts
-
-```bash
-# Development
-npm run dev          # Start Vite dev server on port 5000 with HMR
-npm run check        # Run TypeScript type checking
-
-# Production
-npm run build        # Build static site for production
-npm run preview      # Preview production build locally
-```
-
-### Development Workflow
-
-1. **Start the development server**
-
-```bash
-npm run dev
-```
-
-Server starts on `http://localhost:5000`
-
-2. **Make your changes**
-   - Hot module replacement (HMR) enabled
-   - Changes reflect immediately in browser
-   - TypeScript errors shown in terminal
-
-3. **Run type checking**
-
-```bash
-npm run check
-```
-
-4. **Build for production**
-
-```bash
-npm run build
-```
-
-### Code Style Guidelines
-
-- **TypeScript** - Strict mode with comprehensive type safety
-  - All types defined in `shared/schema.ts` for consistency
-  - Runtime validation with Zod schemas
-  - No `any` types allowed (use `unknown` with type guards)
-- **Component Structure** - React functional components with hooks
-  - Prefer composition over inheritance
-  - Keep components small and focused (< 300 lines)
-  - Extract reusable logic into custom hooks
-- **Styling** - Tailwind CSS utility classes with shadcn/ui components
-  - Use `cn()` utility for conditional classes
-  - Follow mobile-first responsive design
-  - Dark mode support via CSS variables
-- **State Management** 
-  - TanStack Query for server state (5s cache on home, 60s on auction)
-  - React useState for UI state
-  - Local Storage for persistent auction state
-  - No global state management library needed
-- **Data Fetching** 
-  - Direct Google Sheets CSV export URLs
-  - Papa Parse for CSV parsing
-  - Automatic retry and error handling
-  - Client-side caching with stale-while-revalidate
-- **File Organization** 
-  - Feature-based in `pages/` directory
-  - Reusable components in `components/`
-  - Shared utilities in `lib/`
-  - Configuration in `config/` and `shared/`
-- **Responsive Design** 
-  - Mobile-first approach (design for 375px, scale up)
-  - Breakpoints: sm (640px), md (768px), lg (1024px), xl (1280px)
-  - Touch-friendly tap targets (min 48px)
-  - Mobile-specific features (e.g., tap to increment on ≤768px)
-
-## 🔍 Troubleshooting
-
-### Common Issues
-
-#### 1. Google Sheets 400 Errors (EXPECTED BEHAVIOR)
+## Project Structure
 
 ```
-Failed to load resource: the server responded with a status of 400
+IPL_Auction_2025/
+├── client/                          # React frontend (Vite)
+│   ├── index.html                   # HTML entry + meta tags
+│   ├── public/                      # Static assets
+│   │   └── images/                  # Team logos, auction backgrounds
+│   └── src/
+│       ├── App.tsx                  # Routing (Wouter) + providers
+│       ├── main.tsx                 # React entry point
+│       ├── index.css                # Global styles & Tailwind
+│       ├── components/              # Reusable UI
+│       │   ├── ui/                  # shadcn/ui primitives
+│       │   ├── PlayerTable.tsx      # Sortable/filterable player tables
+│       │   ├── LeaderboardView.tsx  # Live standings
+│       │   ├── GuidelinesView.tsx   # Rules renderer
+│       │   ├── RoomAccessGuard.tsx  # Room password guard
+│       │   └── ProtectedRoute.tsx   # Admin route guard
+│       ├── config/teamBranding.ts   # Team logos & colors
+│       ├── contexts/                # Auth, Tournament (active room)
+│       ├── hooks/                   # useIPLData, useAuctionRules, use-toast
+│       ├── lib/                     # supabase client, queryClient, utils
+│       ├── pages/                   # Page components
+│       │   ├── LandingPage.tsx      # Marketing landing (hero, features, CTAs)
+│       │   ├── TournamentsPage.tsx  # Room listing / lobby (`/tournaments`)
+│       │   ├── CreateRoomPage.tsx   # Auth-gated room creation (`/create`)
+│       │   ├── LegalPage.tsx        # Privacy policy & terms pages
+│       │   ├── LoginPage.tsx        # Sign in
+│       │   ├── SignUpPage.tsx       # Create an account
+│       │   ├── AuctionPage.tsx      # Live auction management
+│       │   ├── ElementLight.tsx     # Main public dashboard
+│       │   ├── TeamDashboard.tsx    # Per-team detail
+│       │   ├── TeamsListing.tsx     # All teams grid
+│       │   ├── PlayingXI.tsx        # Playing XI selection
+│       │   ├── sections/            # Tab content (overview, sold, etc.)
+│       │   └── admin/               # Admin CRUD pages
+│       └── services/
+│           ├── supabaseService.ts   # All DB access + mapping
+│           └── auctionRules.ts      # Rules read/write + realtime
+├── shared/
+│   └── config.ts                    # Central app/auction configuration
+├── supabase-schema.sql              # Database schema, RLS, seeds
+├── .env.example                     # Env var template
+├── vercel.json                      # SPA rewrite config
+├── package.json                     # Scripts & dependencies
+├── tailwind.config.ts               # Tailwind theme
+├── tsconfig.json                    # TypeScript config
+└── vite.config.ts                   # Build config
 ```
 
-**This is normal!** The service tries multiple sheet identifiers (GIDs) to find the correct data. These 400 errors are expected and don't affect functionality.
+---
 
-#### 2. Data Not Refreshing
+## Routes
 
-**Solution**:
-- Check browser console for fetch errors
-- Verify Google Sheets are publicly accessible
-- Clear browser cache and reload
-- Ensure sheet permissions allow public CSV export
+| Path                          | Access    | Description                            |
+| ----------------------------- | --------- | -------------------------------------- |
+| `/` · `/landing` · `/portal`  | Public    | Landing / room listing                 |
+| `/room/:roomCode`             | Public*   | Room public dashboard                  |
+| `/room/:roomCode/auction`     | Admin     | Room auction screen                    |
+| `/room/:roomCode/leaderboard` | Public    | Room leaderboard                       |
+| `/t/:roomCode`                | Public    | Room alias                             |
+| `/dashboard` · `/overview`    | Public    | Active-room dashboard                  |
+| `/leaderboard`                | Public    | Leaderboard view                       |
+| `/team`                       | Public    | All teams grid                         |
+| `/team/:teamId`               | Public    | Team dashboard                         |
+| `/team/:teamId/playing-xi`    | Public    | Playing XI selection                   |
+| `/auction`                    | Admin     | Auction management                     |
+| `/admin`                      | Admin     | Admin dashboard                        |
+| `/admin/tournaments` · `rooms`| Admin     | Room management                        |
+| `/admin/players`              | Admin     | Player CRUD + import                   |
+| `/admin/teams`                | Admin     | Team CRUD                              |
+| `/admin/pools`                | Admin     | Sets / pools management                |
+| `/admin/leaderboard`          | Admin     | Standings                              |
+| `/admin/export`               | Admin     | CSV export                             |
+| `/login`                      | Public    | Admin sign-in                          |
+| `/signup`                     | Public    | Create an account (room hosting)       |
+| `/create` · `/create-room`    | Auth      | Create a new tournament room           |
 
-#### 3. Auction State Lost
+\* Private rooms require a password via `RoomAccessGuard`.
 
-**Solution**:
-- Check browser local storage is enabled
-- Don't use incognito/private mode
-- Use "Reset View" button to reload from Google Sheets
+---
 
-#### 4. Touch Gestures Not Working
+## Auction Experience
 
-**Solution**:
-- Ensure you're on the auction page
-- Swipe distance must be at least 50px
-- Try disabling browser gesture navigation
+The auction screen is the heart of the app, designed for one operator running it live:
 
-#### 5. Tap to Increment Not Working
+1. **Navigate** players with buttons, keyboard (`←`/`→`), or swipe gestures.
+2. **Bid** by incrementing the current price.
+3. **Sell** (`S`) → marks player sold to the selected team, logs to `auction_log`, confirms with confetti.
+4. **Skip** (`U`) → marks player unsold with an animated stamp.
+5. **Undo** (`R`) → reverses the last action and removes the audit entry.
+6. Data syncs to Supabase in real time so viewers see the outcome instantly.
 
-**Solution**:
-- Verify you're on a mobile device or screen width ≤768px
-- Desktop users cannot tap to increment (by design)
-- Resize browser window to mobile width to test
-- Use keyboard shortcuts (Space/Enter/Any Key) as alternative
+All actions are recorded in `auction_log` for audit and replay.
 
-## 🔧 Configuration
+---
 
-### Google Sheets Setup
+## Admin Panel
 
-**Note**: The Google Sheets structure and configuration will be provided separately. The application requires properly formatted sheets for Teams & Budget, Players Catalogue, and Auctioneer data.
+The admin area (`/admin`) is protected and requires an `admin` role from `users_meta`
+(or the custom admin session). Key workflows:
 
+- **Set up a room** — create a tournament, set passwords, clone a template structure.
+- **Register teams** — add franchises with logos and budgets.
+- **Import players** — bulk CSV import with automatic role normalization, or add manually.
+- **Organize pools** — auto-group by role or arrange players into rounds/sets.
+- **Run the auction** — launch the auction screen for the room.
+- **Export** — download player, sold-player, and team-summary CSVs.
 
-**Important**: The service automatically handles multiple sheet formats and will attempt various GID values to locate the correct data. You may see expected 400 errors in the console during this discovery process.
+---
 
-### Application Settings
+## Configuration
 
-The application provides centralized configuration in `shared/config.ts`:
+Centralized in [`shared/config.ts`](./shared/config.ts):
 
-#### Auction Configuration
-```typescript
-export const AUCTION_CONFIG = {
-  maxPlayers: 15,         // Maximum players per team
-  minPlayers: 11,         // Minimum players required
-  maxOverseasPlayers: 7,  // Maximum foreign players per team
-  teamsQualifying: 8,     // Number of teams advancing to playoffs
-  bidIncrement: 1000,     // Default bid increment amount
-};
-```
+- `AUCTION_CONFIG` — squad limits, overseas cap, playoff threshold, bid increment, base price.
+- `PLAYING_XI_CONFIG` — XI size, role minimums/maximums, overseas limit, captain multipliers.
 
-#### Playing XI Validation Rules
-```typescript
-export const PLAYING_XI_CONFIG = {
-  totalPlayers: 11,       // Total players in Playing XI
-  batsmen: {
-    min: 2,               // Minimum batsmen required
-    max: 5,               // Maximum batsmen allowed
-  },
-  wicketKeepers: {
-    min: 1,               // Minimum wicket-keepers required
-    max: 3,               // Maximum wicket-keepers allowed (increase if you want multiple WKs)
-  },
-  allRounders: {
-    min: 1,               // Minimum all-rounders required
-  },
-  bowlers: {
-    min: 2,               // Minimum bowlers required
-  },
-  foreignPlayers: {
-    max: 4,               // Maximum foreign players in Playing XI
-  },
-};
-```
+Many of these values can also be overridden per tournament in the database
+(`auction_settings`), which takes precedence at runtime via `useAuctionRules`.
 
-**Note**: All Playing XI validation rules are now configurable in one place. Simply edit the values in `shared/config.ts` to customize the requirements for your tournament.
+### Adding / Changing Team Branding
 
-### Team Logos
-
-#### Simple 2-Step Process
-
-**Step 1:** Upload logo file to `/client/public/images/teams/`
-- Supported formats: `.jpg`, `.png`, `.webp`, `.jpeg`
-- Recommended: Square images (1:1 ratio)
-
-**Step 2:** Update `client/src/config/teamBranding.ts`:
+1. Place the logo in `client/public/images/teams/` (`.jpg`, `.png`, `.webp`, `.jpeg`; 1:1 recommended).
+2. Add/update the entry in `client/src/config/teamBranding.ts`:
 
 ```typescript
-'Your Team Name': {
-  logo: '/images/teams/your-logo.png',
-  borderColor: 'border-[#HEXCOLOR]',
-  bgGradient: 'bg-[linear-gradient(...)]',
-}
+"Team Name": {
+  logo: "/images/teams/team-name.png",
+  borderColor: "border-[#HEXCOLOR]",
+  bgGradient: "bg-[linear-gradient(135deg,rgba(...))]",
+},
 ```
 
-The logo will automatically appear everywhere in the application!
+Team branding stored in the `teams` table overrides these defaults automatically.
 
-## 📊 Data Flow
+---
 
-```
-Google Sheets (Source)
-       ↓
-CSV Export URLs
-       ↓
-Papa Parse (Parser)
-       ↓
-TanStack Query (Cache - 5s home / 60s auction)
-       ↓
-React Components (Display)
-       ↓
-User Interface
-```
+## Development
 
-
-## 🤝 Contributing
-
-We welcome contributions! Here's how:
-
-1. **Fork the repository**
-2. **Create feature branch**
-   ```bash
-   git checkout -b feature/amazing-feature
-   ```
-3. **Make your changes**
-   - Follow existing code style
-   - Add TypeScript types
-   - Test thoroughly
-4. **Commit with clear message**
-   ```bash
-   git commit -m 'Add: Feature description'
-   ```
-5. **Push to your fork**
-   ```bash
-   git push origin feature/amazing-feature
-   ```
-6. **Open Pull Request**
-   - Describe changes clearly
-   - Reference any related issues
-   - Include screenshots if UI changes
-
-## 🔐 Environment Variables
-
-This application runs entirely on the frontend and does not require environment variables for basic operation. All configuration is done through:
-
--- **Auction Rules**: Configured in `shared/config.ts`
-- **Team Branding**: Configured in `client/src/config/teamBranding.ts`
-
-### Optional Environment Variables
-
-For advanced deployments, you can use:
+### Scripts
 
 ```bash
-# Vite-specific (must be prefixed with VITE_)
-VITE_GOOGLE_SHEET_ID=your_spreadsheet_id_here
-VITE_API_BASE_URL=https://your-api-url.com
+npm run dev       # Start Vite dev server with HMR
+npm run check     # Run TypeScript type checking (tsc)
+npm run build     # Build production bundle to dist/
+npm run preview   # Serve the production build locally
 ```
 
-**Note**: Environment variables in Vite must be prefixed with `VITE_` to be accessible in the frontend code via `import.meta.env.VITE_*`
+### Code Style
 
-## 📦 Dependencies
+- **TypeScript** in strict mode; domain models are defined and reused from the service layer.
+- **React** functional components + hooks; small, focused components.
+- **Styling** — Tailwind CSS with shadcn/ui primitives; use `cn()` for conditional classes; mobile-first.
+- **Data** — all persistence via `supabaseService`; server state via TanStack Query; realtime via Supabase subscriptions.
+- **Layout** — feature-based pages under `client/src/pages/`, reusable UI in `components/`, config in `shared/`.
 
-### Core Dependencies
-- **React 18** - UI library
-- **TypeScript** - Type safety
-- **Vite** - Build tool and dev server
-- **Wouter** - Lightweight routing (4KB alternative to React Router)
-- **TanStack Query** - Server state management
-- **Framer Motion** - Smooth animations and transitions
-- **Tailwind CSS** - Utility-first styling
-- **shadcn/ui** - High-quality component library
+---
 
-### Key Libraries
-- **Papa Parse** - CSV parsing for Google Sheets data
-- **date-fns** - Date formatting and manipulation
-- **Lucide React** - Beautiful icon library
-- **canvas-confetti** - Celebration effects
-- **Zod** - Runtime type validation
-- **clsx & tailwind-merge** - Conditional class utilities
+## Deployment
 
-### Development Tools
-- **TypeScript 5.x** - Enhanced type checking
-- **Vite 5.x** - Fast HMR and builds
-- **PostCSS** - CSS processing
-- **Autoprefixer** - Browser compatibility
+This is a static frontend; any static host works. The repo ships a `vercel.json` SPA
+rewrite for clean client-side routing.
 
-## 📄 License
+### Vercel (recommended)
+
+```bash
+npm i -g vercel
+vercel
+```
+
+Push to `main` for production; PRs get preview deployments.
+
+### Netlify
+
+- **Build command:** `npm run build`
+- **Publish directory:** `dist`
+
+### Generic static hosting
+
+Build once and serve `dist/`, ensuring all unknown routes rewrite to `index.html` so
+Wouter routing works (see `vercel.json`).
+
+> Don't forget to set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in your hosting
+> provider's environment before building.
+
+---
+
+## Troubleshooting
+
+| Symptom                                        | Fix                                                             |
+| ---------------------------------------------- | --------------------------------------------------------------- |
+| Data doesn't load                              | Confirm Supabase credentials/env are set and the schema is applied |
+| Room can't be entered                          | Check room passwords; running seeded room uses `admin123`        |
+| Live updates not appearing                     | Ensure tables are in the realtime publication (see schema)       |
+| Uploads fail                                   | Verify storage buckets (`player-images`, `team-logos`) exist     |
+| Routes 404 after deploy                        | Configure SPA rewrite to `index.html`                            |
+| Illegal `available` status error               | Use `pending` — `available` is not a valid DB status             |
+
+---
+
+## Contributing
+
+1. Fork the repository.
+2. Create a feature branch (`git checkout -b feature/your-feature`).
+3. Make changes following the code style above; run `npm run check`.
+4. Commit with a clear message and open a pull request.
+
+---
+
+## License
 
 This project is licensed under the MIT License.
 
-## 🚀 Deployment
+## Acknowledgments
 
-This is a static frontend application that can be deployed to any static hosting platform.
-
-### Recommended: Vercel (Optimized)
-
-The project includes `vercel.json` configuration for zero-config deployment:
-
-1. **Connect Repository**
-   ```bash
-   # Install Vercel CLI
-   npm i -g vercel
-   
-   # Deploy
-   vercel
-   ```
-
-2. **Automatic Deployments**
-   - Push to `main` branch triggers production deployment
-   - Pull requests get preview deployments
-   - Edge network CDN for global performance
-
-### Alternative Platforms
-
-#### Netlify
-```bash
-# Build command
-npm run build
-
-# Publish directory
-dist
-
-# Environment variables (none required)
-```
-
-#### Render
-```yaml
-# render.yaml
-services:
-  - type: web
-    name: ipl-auction-dashboard
-    env: static
-    buildCommand: npm install && npm run build
-    staticPublishPath: dist
-```
-
-#### GitHub Pages
-```bash
-# Install gh-pages
-npm install -D gh-pages
-
-# Add to package.json scripts
-"deploy": "npm run build && gh-pages -d dist"
-
-# Deploy
-npm run deploy
-```
-
-#### Self-Hosted (Nginx)
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-    
-    root /var/www/ipl-dashboard/dist;
-    index index.html;
-    
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-    
-    # Cache static assets
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-}
-```
-
-### Build Configuration
-
-**Important**: The application is already configured for static deployment. No server-side code is required.
-
-```json
-{
-  "build": {
-    "command": "npm run build",
-    "output": "dist"
-  }
-}
-```
-
-### Post-Deployment Checklist
-
-- [ ] Verify Google Sheets are publicly accessible
-- [ ] Test all navigation routes work (SPA routing)
-- [ ] Confirm images load correctly
-- [ ] Check mobile responsiveness
-- [ ] Test tap to increment on mobile devices
-- [ ] Verify data refreshes automatically
-- [ ] Test keyboard shortcuts work
-- [ ] Confirm confetti animation works on sold actions
-
-## 🙏 Acknowledgments
-
-- ISTE for branding and logo
-- IPL for the exciting cricket league
-- Open source community for amazing tools and libraries
+- **ISTE** — branding, logo, and the vision behind the dashboard.
+- **IPL** — the incredible cricket league this tool supports.
+- The open-source community — React, Vite, Tailwind CSS, shadcn/ui, Framer Motion, TanStack Query, and the Supabase team.

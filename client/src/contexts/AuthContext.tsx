@@ -9,7 +9,7 @@ import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { supabaseService } from "@/services/supabaseService";
 
-export type UserRole = "admin" | null;
+export type UserRole = "admin" | "organizer" | null;
 
 interface AuthContextType {
   user: User | null;
@@ -19,6 +19,11 @@ interface AuthContextType {
   scopedTournamentId: number | null;
   isMasterAdmin: boolean;
   login: (email: string, password: string) => Promise<void>;
+  signUp: (
+    username: string,
+    email: string,
+    password: string,
+  ) => Promise<{ needsEmailConfirmation: boolean }>;
   logout: () => Promise<void>;
   isAdmin: boolean;
   isAuthenticated: boolean;
@@ -221,6 +226,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     throw new Error("Invalid username/room code or password.");
   };
 
+  const signUp = async (
+    username: string,
+    email: string,
+    password: string,
+  ): Promise<{ needsEmailConfirmation: boolean }> => {
+    const res = await supabaseService.signUpUser({ username, email, password });
+    if (res.user && !res.needsEmailConfirmation) {
+      const meta = await fetchUserMeta(res.user.id);
+      setUser({ id: res.user.id, email: res.user.email } as User);
+      setRole(meta.role);
+      setDisplayName(username.trim() || "User");
+      setIsMasterAdmin(meta.role === "admin");
+      setScopedTournamentId(null);
+    }
+    return res;
+  };
+
   const logout = async (): Promise<void> => {
     localStorage.removeItem("ipl_custom_auth_session");
     await supabase.auth.signOut().catch(() => {});
@@ -241,6 +263,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         scopedTournamentId,
         isMasterAdmin,
         login,
+        signUp,
         logout,
         isAdmin: role === "admin",
         isAuthenticated: !!user && !!role,

@@ -19,14 +19,18 @@ CREATE TABLE IF NOT EXISTS tournaments (
   is_private BOOLEAN DEFAULT false,
   room_password TEXT DEFAULT '',
   admin_password TEXT DEFAULT 'admin123',
+  created_by UUID,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Idempotently add new columns if table already exists
+ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS banner_url TEXT;
+ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS logo_url TEXT;
 ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS is_private BOOLEAN DEFAULT false;
 ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS room_password TEXT DEFAULT '';
 ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS admin_password TEXT DEFAULT 'admin123';
+ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS created_by UUID;
 
 -- Ensure Unique Constraints on tournaments
 DO $$
@@ -41,6 +45,7 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS idx_tournaments_room_code ON tournaments(room_code);
 CREATE INDEX IF NOT EXISTS idx_tournaments_slug ON tournaments(slug);
+CREATE INDEX IF NOT EXISTS idx_tournaments_created_by ON tournaments(created_by);
 
 -- Enable RLS for tournaments
 ALTER TABLE tournaments ENABLE ROW LEVEL SECURITY;
@@ -165,17 +170,39 @@ CREATE INDEX IF NOT EXISTS idx_auction_log_tournament_id ON auction_log(tourname
 CREATE INDEX IF NOT EXISTS idx_auction_log_created ON auction_log(created_at DESC);
 
 
--- 5. USERS META TABLE
+-- 5. USERS META TABLE (Auth: admins & room organizers)
 CREATE TABLE IF NOT EXISTS users_meta (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   auth_id UUID NOT NULL UNIQUE,
   email TEXT NOT NULL,
+  username TEXT,
   display_name TEXT,
-  role TEXT NOT NULL CHECK (role IN ('admin')),
+  role TEXT NOT NULL DEFAULT 'organizer' CHECK (role IN ('admin','organizer')),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Idempotently add username column if the table already existed
+ALTER TABLE users_meta ADD COLUMN IF NOT EXISTS username TEXT;
+
+-- Allow 'organizer' role on pre-existing tables (drop old inline check, re-add widened one)
+DO $$
+BEGIN
+  ALTER TABLE users_meta DROP CONSTRAINT IF EXISTS users_meta_role_check;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_meta_role_ck') THEN
+    ALTER TABLE users_meta ADD CONSTRAINT users_meta_role_ck CHECK (role IN ('admin','organizer'));
+  END IF;
+END $$;
+
+-- Ensure unique email for public sign-ups
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_meta_email_key') THEN
+    ALTER TABLE users_meta ADD CONSTRAINT users_meta_email_key UNIQUE (email);
+  END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_users_meta_auth_id ON users_meta(auth_id);
+CREATE INDEX IF NOT EXISTS idx_users_meta_email ON users_meta(email);
 
 
 -- 6. PLAYING XI TABLE
@@ -305,16 +332,6 @@ ALTER TABLE users_meta ENABLE ROW LEVEL SECURITY;
 ALTER TABLE playing_xi ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pools ENABLE ROW LEVEL SECURITY;
 
--- Tournaments
-DROP POLICY IF EXISTS "Tournaments are viewable by everyone" ON tournaments;
-CREATE POLICY "Tournaments are viewable by everyone" ON tournaments FOR SELECT USING (true);
-DROP POLICY IF EXISTS "Anyone can insert tournaments" ON tournaments;
-CREATE POLICY "Anyone can insert tournaments" ON tournaments FOR INSERT WITH CHECK (true);
-DROP POLICY IF EXISTS "Anyone can update tournaments" ON tournaments;
-CREATE POLICY "Anyone can update tournaments" ON tournaments FOR UPDATE USING (true) WITH CHECK (true);
-DROP POLICY IF EXISTS "Anyone can delete tournaments" ON tournaments;
-CREATE POLICY "Anyone can delete tournaments" ON tournaments FOR DELETE USING (true);
-
 -- Players
 DROP POLICY IF EXISTS "Players are viewable by everyone" ON players;
 CREATE POLICY "Players are viewable by everyone" ON players FOR SELECT USING (true);
@@ -324,9 +341,6 @@ DROP POLICY IF EXISTS "Anyone can update players" ON players;
 CREATE POLICY "Anyone can update players" ON players FOR UPDATE USING (true) WITH CHECK (true);
 DROP POLICY IF EXISTS "Anyone can delete players" ON players;
 CREATE POLICY "Anyone can delete players" ON players FOR DELETE USING (true);
-DROP POLICY IF EXISTS "Authenticated users can insert players" ON players;
-DROP POLICY IF EXISTS "Authenticated users can update players" ON players;
-DROP POLICY IF EXISTS "Authenticated users can delete players" ON players;
 
 -- Teams
 DROP POLICY IF EXISTS "Teams are viewable by everyone" ON teams;
@@ -337,9 +351,6 @@ DROP POLICY IF EXISTS "Anyone can update teams" ON teams;
 CREATE POLICY "Anyone can update teams" ON teams FOR UPDATE USING (true) WITH CHECK (true);
 DROP POLICY IF EXISTS "Anyone can delete teams" ON teams;
 CREATE POLICY "Anyone can delete teams" ON teams FOR DELETE USING (true);
-DROP POLICY IF EXISTS "Authenticated users can insert teams" ON teams;
-DROP POLICY IF EXISTS "Authenticated users can update teams" ON teams;
-DROP POLICY IF EXISTS "Authenticated users can delete teams" ON teams;
 
 -- Auction Log
 DROP POLICY IF EXISTS "Auction log is viewable by everyone" ON auction_log;
@@ -350,13 +361,14 @@ DROP POLICY IF EXISTS "Anyone can update auction log" ON auction_log;
 CREATE POLICY "Anyone can update auction log" ON auction_log FOR UPDATE USING (true) WITH CHECK (true);
 DROP POLICY IF EXISTS "Anyone can delete auction log" ON auction_log;
 CREATE POLICY "Anyone can delete auction log" ON auction_log FOR DELETE USING (true);
-DROP POLICY IF EXISTS "Authenticated users can insert auction log" ON auction_log;
-DROP POLICY IF EXISTS "Authenticated users can update auction log" ON auction_log;
-DROP POLICY IF EXISTS "Authenticated users can delete auction log" ON auction_log;
 
 -- Users Meta
 DROP POLICY IF EXISTS "Users can read their own meta" ON users_meta;
 CREATE POLICY "Users can read their own meta" ON users_meta FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Anyone can insert users_meta (sign-up)" ON users_meta;
+CREATE POLICY "Anyone can insert users_meta (sign-up)" ON users_meta FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Anyone can update users_meta" ON users_meta;
+CREATE POLICY "Anyone can update users_meta" ON users_meta FOR UPDATE USING (true) WITH CHECK (true);
 
 -- Playing XI
 DROP POLICY IF EXISTS "Playing XI is viewable by everyone" ON playing_xi;
@@ -377,9 +389,6 @@ DROP POLICY IF EXISTS "Anyone can update pools" ON pools;
 CREATE POLICY "Anyone can update pools" ON pools FOR UPDATE USING (true) WITH CHECK (true);
 DROP POLICY IF EXISTS "Anyone can delete pools" ON pools;
 CREATE POLICY "Anyone can delete pools" ON pools FOR DELETE USING (true);
-DROP POLICY IF EXISTS "Authenticated users can insert pools" ON pools;
-DROP POLICY IF EXISTS "Authenticated users can update pools" ON pools;
-DROP POLICY IF EXISTS "Authenticated users can delete pools" ON pools;
 
 
 -- ENABLE REALTIME REPLICATION (Drop first to prevent duplicate table error)

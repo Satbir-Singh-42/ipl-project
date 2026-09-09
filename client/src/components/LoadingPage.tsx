@@ -38,7 +38,7 @@ export const LoadingPage = (): JSX.Element => {
         {/* Title */}
         <div className="mb-8">
           <h1 className="[font-family:'Work_Sans',Helvetica] font-bold text-[28px] sm:text-[36px] md:text-[42px] lg:text-[48px] leading-tight tracking-[0] mb-2">
-            <span className="text-white"> IPL 2025 </span>
+            <span className="text-white"> IPL </span>
             <span className="text-[#fe6804]">Player Auction</span>
           </h1>
           <p className="text-white/80 text-lg sm:text-xl font-medium">

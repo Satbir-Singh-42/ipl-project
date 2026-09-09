@@ -12,6 +12,7 @@ import { GuidelinesView } from "@/components/GuidelinesView";
 import { LoadingPage } from "@/components/LoadingPage";
 import { supabaseService, type Team } from "@/services/supabaseService";
 import { TEAM_CARD_CONFIG } from "@shared/config";
+import { Shield, Users, ArrowRight } from "lucide-react";
 
 const navigationTabs = [
   { id: "overview", label: "OVERVIEW", isExternal: false },
@@ -323,9 +324,45 @@ export const PlayerDetailsSection = (): JSX.Element => {
           );
         } else {
           return (
-            <div className="flex items-center justify-center h-32">
-              <div className="text-wwwiplt-2-0comwhite text-lg">
-                No teams available
+            <div className="relative w-full flex items-center justify-center min-h-[55vh] py-16 px-4 overflow-hidden rounded-[16px] md:rounded-[22.47px]">
+              {/* Stadium background behind the empty state */}
+              <div
+                className="absolute inset-0 w-full h-full bg-cover bg-center bg-no-repeat"
+                style={{
+                  backgroundImage: `url(/images/backgrounds/stadium-bg.png)`,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                }}
+              />
+              <div className="absolute inset-0 bg-[#18184a]/70 backdrop-blur-sm" />
+              <div className="relative z-10 w-full max-w-lg mx-auto">
+              <div className="w-full bg-gradient-to-b from-[#0f1629]/95 to-[#18184a]/95 rounded-[22px] border border-white/10 shadow-2xl p-8 sm:p-10 text-center backdrop-blur-xl space-y-5">
+                <div className="w-16 h-16 mx-auto rounded-full bg-[#fe6804]/15 border border-[#fe6804]/40 flex items-center justify-center">
+                  <Shield className="w-8 h-8 text-[#fe6804]" />
+                </div>
+                <h3 className="text-lg sm:text-xl font-bold text-white">
+                  No Teams Available
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
+                  There are currently no franchise teams registered for this
+                  tournament room yet. Once teams are configured, their cards,
+                  budgets, and squad metrics will appear here.
+                </p>
+                <div className="flex flex-wrap justify-center gap-3 pt-3">
+                  <Button
+                    onClick={() => setActiveTab("auction-players")}
+                    className="bg-[linear-gradient(180deg,rgba(255,107,0,1)_0%,rgba(239,65,35,1)_100%)] text-white text-xs sm:text-sm font-bold rounded-full shadow-lg hover:opacity-95">
+                    <Users className="w-4 h-4 mr-1.5" />
+                    View Auction Players
+                  </Button>
+                  <Button
+                    onClick={() => setActiveTab("sold")}
+                    className="bg-white/10 border border-[#90b6ff]/60 text-white text-xs sm:text-sm font-bold rounded-full hover:bg-white/20 hover:border-[#fe6804]/60">
+                    Sold Players
+                    <ArrowRight className="w-4 h-4 ml-1.5" />
+                  </Button>
+                </div>
+              </div>
               </div>
             </div>
           );
@@ -355,7 +392,7 @@ export const PlayerDetailsSection = (): JSX.Element => {
                 className="[font-family:'Work_Sans',Helvetica] font-bold text-sm sm:text-base md:text-lg lg:text-xl 2xl:text-2xl leading-tight tracking-[0] cursor-pointer whitespace-nowrap shrink-0"
                 data-testid="text-title"
                 onClick={() => setLocation("/")}>
-                <span className="text-white"> IPL 2025 </span>
+                <span className="text-white"> IPL </span>
                 <span className="text-[#fe6804]">Player Auction</span>
               </h1>
               {currentTournament?.room_code && (
@@ -416,7 +453,7 @@ export const PlayerDetailsSection = (): JSX.Element => {
 
       {/* Main Dashboard Section */}
       <section className="w-full bg-[#18184a] p-4 sm:p-6 md:p-8 lg:p-[30px_47px] pt-6 md:pt-8">
-        <div className="w-full bg-wwwiplt20comconcrete-80 rounded-[16px] md:rounded-[22.47px] backdrop-blur-[28.09px] backdrop-brightness-[100%] [-webkit-backdrop-filter:blur(28.09px)_brightness(100%)] p-4 sm:p-6 md:p-[22px]">
+        <div className="w-full max-w-[1600px] mx-auto bg-wwwiplt20comconcrete-80 rounded-[16px] md:rounded-[22.47px] backdrop-blur-[28.09px] backdrop-brightness-[100%] [-webkit-backdrop-filter:blur(28.09px)_brightness(100%)] p-4 sm:p-6 md:p-[22px]">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
