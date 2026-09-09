@@ -53,36 +53,9 @@ DROP POLICY IF EXISTS "Tournaments are viewable by everyone" ON tournaments;
 CREATE POLICY "Tournaments are viewable by everyone"
   ON tournaments FOR SELECT USING (true);
 
--- Only registered (authenticated) users can create rooms, and the room
--- is automatically owned by the signed-up user who created it.
-DROP POLICY IF EXISTS "Registered users can create tournament rooms" ON tournaments;
-DROP POLICY IF EXISTS "Authenticated users can insert tournaments" ON tournaments;
-CREATE POLICY "Registered users can create tournament rooms"
-  ON tournaments FOR INSERT TO authenticated
-  WITH CHECK (created_by = auth.uid());
-
--- The room creator (or a users_meta admin) can update/delete their own rooms.
-DROP POLICY IF EXISTS "Room owner or admin can update tournaments" ON tournaments;
-DROP POLICY IF EXISTS "Authenticated users can update tournaments" ON tournaments;
-CREATE POLICY "Room owner or admin can update tournaments"
-  ON tournaments FOR UPDATE
-  USING (
-    auth.uid() = created_by OR
-    EXISTS (SELECT 1 FROM users_meta WHERE auth_id = auth.uid() AND role = 'admin')
-  )
-  WITH CHECK (
-    auth.uid() = created_by OR
-    EXISTS (SELECT 1 FROM users_meta WHERE auth_id = auth.uid() AND role = 'admin')
-  );
-
-DROP POLICY IF EXISTS "Room owner or admin can delete tournaments" ON tournaments;
-DROP POLICY IF EXISTS "Authenticated users can delete tournaments" ON tournaments;
-CREATE POLICY "Room owner or admin can delete tournaments"
-  ON tournaments FOR DELETE
-  USING (
-    auth.uid() = created_by OR
-    EXISTS (SELECT 1 FROM users_meta WHERE auth_id = auth.uid() AND role = 'admin')
-  );
+-- NOTE: The insert/update/delete policies for tournaments are defined further
+-- below in the "ROW LEVEL SECURITY POLICIES" section, AFTER the users_meta
+-- table exists, because the owner/admin checks reference users_meta.
 
 -- Insert Default Tournament #1 (IPL 2025 Mega Auction)
 INSERT INTO tournaments (id, name, slug, room_code, description, currency_symbol, currency_code)
@@ -391,6 +364,38 @@ DROP POLICY IF EXISTS "Anyone can insert users_meta (sign-up)" ON users_meta;
 CREATE POLICY "Anyone can insert users_meta (sign-up)" ON users_meta FOR INSERT WITH CHECK (true);
 DROP POLICY IF EXISTS "Anyone can update users_meta" ON users_meta;
 CREATE POLICY "Anyone can update users_meta" ON users_meta FOR UPDATE USING (true) WITH CHECK (true);
+
+-- Tournaments (owner/admin enforcement — placed here so users_meta exists)
+-- Only registered (authenticated) users can create rooms, and the room is
+-- automatically owned by the signed-up user who created it.
+DROP POLICY IF EXISTS "Registered users can create tournament rooms" ON tournaments;
+DROP POLICY IF EXISTS "Authenticated users can insert tournaments" ON tournaments;
+CREATE POLICY "Registered users can create tournament rooms"
+  ON tournaments FOR INSERT TO authenticated
+  WITH CHECK (created_by = auth.uid());
+
+-- The room creator (or a users_meta admin) can update their own rooms.
+DROP POLICY IF EXISTS "Room owner or admin can update tournaments" ON tournaments;
+DROP POLICY IF EXISTS "Authenticated users can update tournaments" ON tournaments;
+CREATE POLICY "Room owner or admin can update tournaments"
+  ON tournaments FOR UPDATE
+  USING (
+    auth.uid() = created_by OR
+    EXISTS (SELECT 1 FROM users_meta WHERE auth_id = auth.uid() AND role = 'admin')
+  )
+  WITH CHECK (
+    auth.uid() = created_by OR
+    EXISTS (SELECT 1 FROM users_meta WHERE auth_id = auth.uid() AND role = 'admin')
+  );
+
+DROP POLICY IF EXISTS "Room owner or admin can delete tournaments" ON tournaments;
+DROP POLICY IF EXISTS "Authenticated users can delete tournaments" ON tournaments;
+CREATE POLICY "Room owner or admin can delete tournaments"
+  ON tournaments FOR DELETE
+  USING (
+    auth.uid() = created_by OR
+    EXISTS (SELECT 1 FROM users_meta WHERE auth_id = auth.uid() AND role = 'admin')
+  );
 
 -- Playing XI
 DROP POLICY IF EXISTS "Playing XI is viewable by everyone" ON playing_xi;
