@@ -245,8 +245,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async (): Promise<void> => {
-    localStorage.removeItem("ipl_custom_auth_session");
-    await supabase.auth.signOut().catch(() => {});
+    // Clear every local auth session (custom admin + any room keys) so no
+    // stale session can be restored on the next page load.
+    try {
+      localStorage.removeItem("ipl_custom_auth_session");
+    } catch {
+      // ignore
+    }
+    // Invalidate any Supabase session (global scope covers all tabs/webviews).
+    await supabase.auth.signOut({ scope: "global" }).catch(() => {});
+
     setUser(null);
     setRole(null);
     setDisplayName("");

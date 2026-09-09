@@ -13,6 +13,7 @@ import {
   Check,
   RefreshCw,
   RotateCcw,
+  Sparkles,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -104,6 +105,8 @@ export function AdminPlayers() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isSeedingDefault, setIsSeedingDefault] = useState(false);
+  const defaultPlayerCount = supabaseService.getDefaultPlayerCount();
 
   // Custom Confirmation Modal state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -177,6 +180,52 @@ export function AdminPlayers() {
           toast({ title: message, variant: "destructive" });
         } finally {
           setIsClearingUnsold(false);
+        }
+      },
+    });
+  };
+
+  const handleLoadDefaultPlayers = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: "Load Default IPL Player Template",
+      description: `This will add all ${defaultPlayerCount} default IPL 2025 players from the shared template into this tournament room. Players with the same name already present will be skipped. Images are copied into your storage bucket so the roster stays self-contained.`,
+      confirmText: `Load ${defaultPlayerCount} Players`,
+      variant: "primary",
+      onConfirm: async () => {
+        setIsSeedingDefault(true);
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+        try {
+          const result = await supabaseService.seedDefaultPlayers();
+          const msg =
+            result.inserted > 0
+              ? `${result.inserted} player${result.inserted > 1 ? "s" : ""} loaded from the default IPL template`
+              : "All default players already exist in this room";
+          const skipMsg =
+            result.skipped > 0 ? ` · ${result.skipped} already present` : "";
+          toast({
+            title: "Default Player Template Loaded",
+            description: `${msg}${skipMsg}`,
+          });
+
+          if (result.errors.length > 0) {
+            setImportStatus({
+              total: result.inserted + result.errors.length,
+              inserted: result.inserted,
+              errors: result.errors.slice(0, 20),
+            });
+          }
+
+          await loadPlayers();
+          queryClient.invalidateQueries({ queryKey: ["players"] });
+          queryClient.invalidateQueries({ queryKey: ["unsoldPlayers"] });
+          queryClient.invalidateQueries({ queryKey: ["teamStats"] });
+        } catch (err: unknown) {
+          const message =
+            err instanceof Error ? err.message : "Failed to load default players";
+          toast({ title: message, variant: "destructive" });
+        } finally {
+          setIsSeedingDefault(false);
         }
       },
     });
@@ -881,6 +930,19 @@ export function AdminPlayers() {
                     <Download className="w-3.5 h-3.5 text-[#00BCD4]" />
                     CSV Template
                   </button>
+                  <button
+                    onClick={handleLoadDefaultPlayers}
+                    disabled={isSeedingDefault}
+                    className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-[linear-gradient(180deg,rgba(0,188,212,1)_0%,rgba(0,150,170,1)_100%)] text-white hover:opacity-90 shadow-md transition-opacity text-xs font-semibold disabled:opacity-50"
+                    title={`Load the shared ${defaultPlayerCount}-player default IPL template into this room`}
+                  >
+                    {isSeedingDefault ? (
+                      <div className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    ) : (
+                      <Sparkles className="w-3.5 h-3.5" />
+                    )}
+                    {isSeedingDefault ? "Loading..." : `Load Default (${defaultPlayerCount})`}
+                  </button>
                   <label className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-[linear-gradient(180deg,rgba(255,107,0,1)_0%,rgba(239,65,35,1)_100%)] text-white hover:opacity-90 shadow-md transition-opacity text-xs font-semibold cursor-pointer">
                     <Upload className="w-3.5 h-3.5" />
                     Import CSV
@@ -942,6 +1004,21 @@ export function AdminPlayers() {
                   <div>
                     <div className="text-sm font-bold text-white">Importing Players into Database...</div>
                     <div className="text-xs text-white/60">Parsing records and updating database. Please wait.</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Default Template Loading Progress Banner */}
+              {isSeedingDefault && (
+                <div className="mt-3 p-3 sm:p-4 rounded-xl bg-[#0b2a7d] border border-[#00BCD4] flex items-center gap-3 text-white animate-in fade-in">
+                  <div className="w-5 h-5 rounded-full border-2 border-[#00BCD4] border-t-transparent animate-spin shrink-0" />
+                  <div>
+                    <div className="text-sm font-bold text-white">
+                      Loading Default IPL Player Template...
+                    </div>
+                    <div className="text-xs text-white/60">
+                      Copying player headshots into your storage bucket so the roster is self-contained.
+                    </div>
                   </div>
                 </div>
               )}

@@ -125,7 +125,14 @@ export function LegalPage({ type }: { type: "privacy" | "terms" }) {
               <h2 className="text-white font-semibold text-lg mb-2">7. Contact</h2>
               <p>
                 For privacy-related questions, please contact the administrator of the respective tournament
-                room or the Service administrator directly.
+                room or the Service administrator directly at{" "}
+                <a
+                  href="mailto:satbirsingh.dev@gmail.com"
+                  className="text-[#00BCD4] hover:underline font-medium"
+                >
+                  satbirsingh.dev@gmail.com
+                </a>
+                .
               </p>
             </section>
           </div>
@@ -201,7 +208,14 @@ export function LegalPage({ type }: { type: "privacy" | "terms" }) {
               <h2 className="text-white font-semibold text-lg mb-2">8. Contact</h2>
               <p>
                 If you have any questions about these Terms & Conditions, please contact the service
-                administrator.
+                administrator at{" "}
+                <a
+                  href="mailto:satbirsingh.dev@gmail.com"
+                  className="text-[#00BCD4] hover:underline font-medium"
+                >
+                  satbirsingh.dev@gmail.com
+                </a>
+                .
               </p>
             </section>
           </div>

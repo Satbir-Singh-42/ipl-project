@@ -4,6 +4,7 @@ import {
   getTeamBorderColor,
   getTeamGradient,
 } from "@/config/teamBranding";
+import { DEFAULT_PLAYERS } from "@/config/defaultPlayers";
 
 // Re-export the same interfaces used by all consumers
 export interface Tournament {
@@ -1838,6 +1839,16 @@ class SupabaseService {
 
       const validRole = normalizeRole(p.role);
 
+      // Re-host any external image URL into Supabase Storage so the imported
+      // player keeps a self-contained copy even if the source URL is removed.
+      let finalImageUrl = p.image_url?.trim() || null;
+      if (
+        finalImageUrl &&
+        (finalImageUrl.startsWith("http://") || finalImageUrl.startsWith("https://"))
+      ) {
+        finalImageUrl = await this.uploadImageFromUrl("player-images", finalImageUrl);
+      }
+
       const { error } = await supabase.from("players").insert({
         tournament_id: tId,
         name: p.name.trim(),
@@ -1851,7 +1862,7 @@ class SupabaseService {
         eval_points: p.eval_points && !isNaN(Number(p.eval_points)) ? Number(p.eval_points) : 0,
         base_price: p.base_price && !isNaN(Number(p.base_price)) ? Number(p.base_price) : 400000,
         role: validRole,
-        image_url: p.image_url?.trim() || null,
+        image_url: finalImageUrl,
         status: "pending",
         sold_price: 0,
       });
@@ -1864,6 +1875,86 @@ class SupabaseService {
     }
 
     return { inserted, errors };
+  }
+
+  // ─── DEFAULT PLAYER TEMPLATE (SEED FROM players_rows.sql) ───
+
+  /**
+   * Seeds the default 166-player IPL template (from players_rows.sql) into the
+   * given tournament. Each player's external headshot image is re-hosted into
+   * the Supabase `player-images` bucket first so the dataset never depends on
+   * external URLs that could vanish and take the whole roster with them.
+   *
+   * This is the canonical "default player list" template shared with every
+   * tournament room: any admin can load it into their own room with one click.
+   */
+  async seedDefaultPlayers(
+    tournamentId?: number,
+  ): Promise<{ inserted: number; skipped: number; errors: string[] }> {
+    const tId = tournamentId ?? this.activeTournamentId;
+    const errors: string[] = [];
+    let inserted = 0;
+    let skipped = 0;
+
+    // Find which default players already exist in this tournament to avoid dupes
+    const { data: existing } = await supabase
+      .from("players")
+      .select("id, name")
+      .eq("tournament_id", tId)
+      .in("name", DEFAULT_PLAYERS.map((p) => p.name));
+
+    const existingNames = new Set<string>(
+      (existing || []).map((p: { name: string }) => p.name),
+    );
+
+    for (let i = 0; i < DEFAULT_PLAYERS.length; i++) {
+      const p = DEFAULT_PLAYERS[i];
+      if (existingNames.has(p.name)) {
+        skipped++;
+        continue;
+      }
+
+      // Re-host external headshot into Supabase Storage so the dataset is
+      // self-contained and survives the external source disappearing.
+      let finalImageUrl = p.image_url || null;
+      if (
+        finalImageUrl &&
+        (finalImageUrl.startsWith("http://") || finalImageUrl.startsWith("https://"))
+      ) {
+        finalImageUrl = await this.uploadImageFromUrl("player-images", finalImageUrl);
+      }
+
+      const { error } = await supabase.from("players").insert({
+        tournament_id: tId,
+        name: p.name,
+        age: p.age ?? null,
+        country: p.country || "India",
+        t20_matches: p.t20_matches ?? 0,
+        runs: p.runs ?? null,
+        batting_sr: p.batting_sr ?? null,
+        wickets: p.wickets ?? null,
+        economy: p.economy ?? null,
+        eval_points: p.eval_points ?? 0,
+        base_price: p.base_price ?? 400000,
+        role: p.role,
+        image_url: finalImageUrl,
+        status: "pending",
+        sold_price: 0,
+      });
+
+      if (error) {
+        errors.push(`${p.name}: ${error.message}`);
+      } else {
+        inserted++;
+      }
+    }
+
+    return { inserted, skipped, errors };
+  }
+
+  /** Count of default template players available to load. */
+  getDefaultPlayerCount(): number {
+    return DEFAULT_PLAYERS.length;
   }
 
   // ─── EXPORT METHODS ───
