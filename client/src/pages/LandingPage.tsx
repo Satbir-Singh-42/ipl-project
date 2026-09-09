@@ -317,7 +317,7 @@ export function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-8 flex flex-col md:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-3 text-xs text-slate-400">
             <img src="/IPL-logo.png" alt="IPL Logo" className="h-6 w-auto" />
-            <span>© 2025 IPL Auction Portal</span>
+            <span>© IPL Auction Portal</span>
           </div>
 
           <nav className="flex items-center gap-6">

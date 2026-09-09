@@ -1,25 +1,47 @@
 import { useState } from "react";
-import { motion } from "framer-motion";
 import { useLocation, Redirect } from "wouter";
-import { Eye, EyeOff, UserPlus } from "lucide-react";
+import { UserPlus, User, Mail, Lock } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { AuthLayout } from "@/components/AuthLayout";
+import { AuthField } from "@/components/AuthField";
+
+const strengthConfig = [
+  { label: "Too short", color: "bg-red-500" },
+  { label: "Weak", color: "bg-red-500" },
+  { label: "Fair", color: "bg-amber-500" },
+  { label: "Good", color: "bg-lime-500" },
+  { label: "Strong", color: "bg-emerald-500" },
+];
+
+function computeStrength(pw: string): number {
+  if (!pw) return 0;
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 12) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  return Math.max(1, Math.min(4, score));
+}
 
 export function SignUpPage() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { signUp, isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
+  const nextPath = new URLSearchParams(window.location.search).get("next");
+
   if (isAuthenticated) {
-    return <Redirect to="/create" replace />;
+    return <Redirect to={nextPath || "/create"} replace />;
   }
+
+  const strength = computeStrength(password);
+  const strengthMeta = strengthConfig[strength];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,8 +52,18 @@ export function SignUpPage() {
       toast({ title: "All fields are required", variant: "destructive" });
       return;
     }
+    if (cleanName.length < 3) {
+      toast({
+        title: "Username must be at least 3 characters",
+        variant: "destructive",
+      });
+      return;
+    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      toast({ title: "Please enter a valid email address", variant: "destructive" });
+      toast({
+        title: "Please enter a valid email address",
+        variant: "destructive",
+      });
       return;
     }
     if (password.length < 6) {
@@ -54,13 +86,13 @@ export function SignUpPage() {
           title: "Account created — please verify your email",
           description: "Check your inbox, then sign in to create your room.",
         });
-        setLocation("/login");
+        setLocation(nextPath ? `/login?next=${nextPath}` : "/login");
       } else {
         toast({
           title: "Account created",
           description: `Welcome, ${cleanName}! You can now host your tournament room.`,
         });
-        setLocation("/create");
+        setLocation(nextPath || "/create");
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Sign up failed";
@@ -71,122 +103,115 @@ export function SignUpPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0f1629] text-white flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
-      >
-        <Card className="bg-gradient-to-br from-[#1a1f3a]/90 to-[#0a0e1a]/90 border-[#90b6ff]/20 shadow-2xl">
-          <CardHeader className="text-center space-y-4 pb-2">
-            <div className="mx-auto w-16 h-16 rounded-2xl bg-[#fe6804]/15 border border-[#fe6804]/40 flex items-center justify-center">
-              <UserPlus className="w-8 h-8 text-[#fe6804]" />
-            </div>
-            <CardTitle className="text-2xl font-bold text-white">
-              Create Your Account
-            </CardTitle>
-            <p className="text-white/50 text-sm">
-              Sign up to host your own tournament auction room
-            </p>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-white/70 text-xs font-medium mb-1">
-                  Username / Display Name
-                </label>
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="e.g. ISTE Organizer"
-                  className="w-full px-4 py-2.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-[#fe6804]/50 focus:border-[#fe6804]/50"
-                  autoComplete="username"
-                />
-              </div>
-              <div>
-                <label className="block text-white/70 text-xs font-medium mb-1">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="w-full px-4 py-2.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-[#fe6804]/50 focus:border-[#fe6804]/50"
-                  autoComplete="email"
-                />
-              </div>
-              <div>
-                <label className="block text-white/70 text-xs font-medium mb-1">
-                  Password
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="At least 6 characters"
-                    className="w-full pl-4 pr-11 py-2.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-[#fe6804]/50 focus:border-[#fe6804]/50"
-                    autoComplete="new-password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 transition-colors p-1 focus:outline-none"
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label className="block text-white/70 text-xs font-medium mb-1">
-                  Confirm Password
-                </label>
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Re-enter your password"
-                  className="w-full pl-4 pr-11 py-2.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-[#fe6804]/50 focus:border-[#fe6804]/50"
-                  autoComplete="new-password"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full py-2.5 rounded-lg bg-gradient-to-r from-[#fe6804] to-[#ef4123] text-white text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50 shadow-md"
-              >
-                {isSubmitting ? "Creating account..." : "Create Account"}
-              </button>
-            </form>
+    <AuthLayout
+      eyebrow="Get Started"
+      title="Create Your Organizer Account"
+      subtitle="Sign up with a valid email to host your own tournament auction room and manage its credentials."
+      cardBadge={
+        <div className="w-16 h-16 rounded-2xl bg-[#fe6804]/15 border border-[#fe6804]/40 shadow-[0_0_30px_rgba(254,104,4,0.25)] flex items-center justify-center">
+          <UserPlus className="w-8 h-8 text-[#fe6804]" />
+        </div>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <AuthField
+          label="Username / Display Name"
+          icon={User}
+          value={username}
+          onChange={setUsername}
+          placeholder="e.g. ISTE Organizer"
+          autoComplete="username"
+        />
 
-            <div className="mt-4 text-center space-y-2">
-              <p className="text-white/40 text-xs">
-                Already have an account?{" "}
-                <button
-                  onClick={() => setLocation("/login")}
-                  className="text-[#fe6804] hover:text-[#ff9a3d] transition-colors font-medium"
-                >
-                  Sign In
-                </button>
-              </p>
-              <button
-                onClick={() => setLocation("/")}
-                className="text-white/40 text-xs hover:text-white/70 transition-colors"
-              >
-                Back to Public Portal
-              </button>
+        <AuthField
+          label="Email"
+          icon={Mail}
+          type="email"
+          value={email}
+          onChange={setEmail}
+          placeholder="you@example.com"
+          autoComplete="email"
+        />
+
+        <div>
+          <AuthField
+            label="Password"
+            icon={Lock}
+            value={password}
+            onChange={setPassword}
+            password
+            placeholder="At least 6 characters"
+            autoComplete="new-password"
+          />
+          {password.length > 0 && (
+            <div className="mt-2 flex items-center gap-2">
+              <div className="flex flex-1 gap-1.5">
+                {[1, 2, 3, 4].map((i) => (
+                  <div
+                    key={i}
+                    className={`h-1 flex-1 rounded-full transition-colors duration-300 ${
+                      i <= strength ? strengthMeta.color : "bg-white/10"
+                    }`}
+                  />
+                ))}
+              </div>
+              <span className="text-[11px] font-medium text-white/50 w-16 text-right">
+                {strengthMeta.label}
+              </span>
             </div>
-          </CardContent>
-        </Card>
-      </motion.div>
-    </div>
+          )}
+        </div>
+
+        <AuthField
+          label="Confirm Password"
+          icon={Lock}
+          value={confirmPassword}
+          onChange={setConfirmPassword}
+          password
+          placeholder="Re-enter your password"
+          autoComplete="new-password"
+        />
+
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="w-full h-11 rounded-xl bg-gradient-to-r from-[#fe6804] to-[#ef4123] text-white text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50 shadow-lg shadow-[#fe6804]/25 active:scale-[0.99]"
+        >
+          {isSubmitting ? "Creating account..." : "Create Account"}
+        </button>
+      </form>
+
+      <p className="mt-5 text-[11px] leading-relaxed text-white/40 text-center">
+        By creating an account you agree to our{" "}
+        <button
+          onClick={() => setLocation("/terms")}
+          className="text-[#fe6804] hover:text-[#ff9a3d] transition-colors"
+        >
+          Terms
+        </button>{" "}
+        and{" "}
+        <button
+          onClick={() => setLocation("/privacy-policy")}
+          className="text-[#fe6804] hover:text-[#ff9a3d] transition-colors"
+        >
+          Privacy Policy
+        </button>
+        .
+      </p>
+
+      <div className="mt-6 pt-6 border-t border-white/10 text-center">
+        <p className="text-white/40 text-sm">
+          Already have an account?{" "}
+          <button
+            onClick={() =>
+              setLocation(nextPath ? `/login?next=${nextPath}` : "/login")
+            }
+            className="text-[#fe6804] hover:text-[#ff9a3d] transition-colors font-semibold"
+          >
+            Sign In
+          </button>
+        </p>
+      </div>
+    </AuthLayout>
   );
 }

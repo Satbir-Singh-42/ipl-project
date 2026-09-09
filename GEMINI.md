@@ -1,4 +1,4 @@
-# IPL Auction 2025 - Project Rules
+# IPL Auction - Project Rules
 
 ## Design Rules (CRITICAL - never break these)
 

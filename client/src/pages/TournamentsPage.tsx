@@ -279,11 +279,10 @@ export function TournamentsPage() {
                   <div className="flex gap-2">
                     <Button
                       onClick={() => handleEnterRoom(tournament, "public")}
-                      className={`flex-1 font-bold text-xs uppercase text-white tracking-wider h-9 rounded-xl transition-all ${
-                        tournament.is_private
+                      className={`flex-1 font-bold text-xs uppercase text-white tracking-wider h-9 rounded-xl transition-all ${tournament.is_private
                           ? "bg-gradient-to-r from-[#fe6804] to-[#e05b03] hover:opacity-90"
                           : "bg-[#fe6804] hover:bg-[#e05b03]"
-                      }`}
+                        }`}
                     >
                       {tournament.is_private ? (
                         <>
@@ -304,11 +303,10 @@ export function TournamentsPage() {
                           );
                         }
                       }}
-                      className={`flex-1 font-bold text-xs uppercase border tracking-wider h-9 rounded-xl transition-all ${
-                        canManageTournament
+                      className={`flex-1 font-bold text-xs uppercase border tracking-wider h-9 rounded-xl transition-all ${canManageTournament
                           ? "bg-white/10 hover:bg-white/20 text-white border-white/10"
                           : "bg-white/5 text-slate-400 border-white/10 opacity-70 cursor-not-allowed"
-                      }`}
+                        }`}
                     >
                       {canManageTournament ? (
                         <Shield className="w-3 h-3 mr-1 text-[#fe6804]" />
@@ -350,7 +348,7 @@ export function TournamentsPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-8 flex flex-col md:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-3 text-xs text-slate-400">
             <img src="/IPL-logo.png" alt="IPL Logo" className="h-6 w-auto" />
-            <span>© 2025 IPL Auction Portal</span>
+            <span>© IPL Auction Portal</span>
           </div>
           <nav className="flex items-center gap-6">
             <button onClick={() => setLocation("/privacy-policy")} className="text-xs text-slate-400 hover:text-white transition-colors">

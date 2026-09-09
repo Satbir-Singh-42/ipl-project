@@ -231,11 +231,10 @@ export function CreateRoomPage() {
                       }
                     }
                   }}
-                  className={`h-11 text-sm bg-black/40 border-white/20 text-white rounded-xl placeholder:text-slate-500 ${
-                    name.trim() && tournaments.some((t) => t.name.toLowerCase() === name.trim().toLowerCase())
-                      ? "border-red-500 focus:ring-red-500"
-                      : ""
-                  }`}
+                  className={`h-11 text-sm bg-black/40 border-white/20 text-white rounded-xl placeholder:text-slate-500 ${name.trim() && tournaments.some((t) => t.name.toLowerCase() === name.trim().toLowerCase())
+                    ? "border-red-500 focus:ring-red-500"
+                    : ""
+                    }`}
                 />
                 {name.trim() && tournaments.some((t) => t.name.toLowerCase() === name.trim().toLowerCase()) && (
                   <p className="text-xs text-red-400 mt-1.5 font-medium">
@@ -257,11 +256,10 @@ export function CreateRoomPage() {
                       setRoomCode(e.target.value.toUpperCase());
                       setIsRoomCodeCustomized(true);
                     }}
-                    className={`h-11 text-sm bg-black/40 border-white/20 text-white font-mono uppercase rounded-xl placeholder:text-slate-500 ${
-                      roomCode.trim() && tournaments.some((t) => t.room_code.toUpperCase() === roomCode.trim().toUpperCase())
-                        ? "border-red-500 focus:ring-red-500"
-                        : ""
-                    }`}
+                    className={`h-11 text-sm bg-black/40 border-white/20 text-white font-mono uppercase rounded-xl placeholder:text-slate-500 ${roomCode.trim() && tournaments.some((t) => t.room_code.toUpperCase() === roomCode.trim().toUpperCase())
+                      ? "border-red-500 focus:ring-red-500"
+                      : ""
+                      }`}
                   />
                   {roomCode.trim() && tournaments.some((t) => t.room_code.toUpperCase() === roomCode.trim().toUpperCase()) && (
                     <p className="text-xs text-red-400 mt-1.5 font-medium">
@@ -280,11 +278,10 @@ export function CreateRoomPage() {
                       setSlug(e.target.value.toLowerCase());
                       setIsSlugCustomized(true);
                     }}
-                    className={`h-11 text-sm bg-black/40 border-white/20 text-white rounded-xl placeholder:text-slate-500 ${
-                      slug.trim() && tournaments.some((t) => t.slug.toLowerCase() === slug.trim().toLowerCase())
-                        ? "border-red-500 focus:ring-red-500"
-                        : ""
-                    }`}
+                    className={`h-11 text-sm bg-black/40 border-white/20 text-white rounded-xl placeholder:text-slate-500 ${slug.trim() && tournaments.some((t) => t.slug.toLowerCase() === slug.trim().toLowerCase())
+                      ? "border-red-500 focus:ring-red-500"
+                      : ""
+                      }`}
                   />
                   {slug.trim() && tournaments.some((t) => t.slug.toLowerCase() === slug.trim().toLowerCase()) && (
                     <p className="text-xs text-red-400 mt-1.5 font-medium">
@@ -306,11 +303,10 @@ export function CreateRoomPage() {
                       <button
                         type="button"
                         onClick={() => setIsPrivate(false)}
-                        className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                          !isPrivate
-                            ? "bg-[#00bcd4]/20 border-[#00bcd4] text-[#00bcd4] shadow-sm"
-                            : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
-                        }`}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${!isPrivate
+                          ? "bg-[#00bcd4]/20 border-[#00bcd4] text-[#00bcd4] shadow-sm"
+                          : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+                          }`}
                       >
                         <Globe className="w-4 h-4" />
                         Public
@@ -318,11 +314,10 @@ export function CreateRoomPage() {
                       <button
                         type="button"
                         onClick={() => setIsPrivate(true)}
-                        className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                          isPrivate
-                            ? "bg-[#fe6804]/20 border-[#fe6804] text-[#fe6804] shadow-sm"
-                            : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
-                        }`}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${isPrivate
+                          ? "bg-[#fe6804]/20 border-[#fe6804] text-[#fe6804] shadow-sm"
+                          : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+                          }`}
                       >
                         <Lock className="w-4 h-4" />
                         Private
@@ -448,11 +443,10 @@ export function CreateRoomPage() {
                                 }
                                 setIsCurrencyDropdownOpen(false);
                               }}
-                              className={`p-2 rounded-lg text-left flex items-center justify-between transition-all ${
-                                isSelected
-                                  ? "bg-[#00bcd4]/20 border border-[#00bcd4] text-white"
-                                  : "bg-white/5 border border-transparent hover:bg-white/10 text-slate-300"
-                              }`}
+                              className={`p-2 rounded-lg text-left flex items-center justify-between transition-all ${isSelected
+                                ? "bg-[#00bcd4]/20 border border-[#00bcd4] text-white"
+                                : "bg-white/5 border border-transparent hover:bg-white/10 text-slate-300"
+                                }`}
                             >
                               <div className="flex items-center gap-2 min-w-0">
                                 <span className="w-6 h-6 rounded-md bg-black/40 border border-white/10 text-[#00bcd4] font-bold text-xs flex items-center justify-center font-mono shrink-0">
@@ -564,7 +558,7 @@ export function CreateRoomPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-8 flex flex-col md:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-3 text-xs text-slate-400">
             <img src="/IPL-logo.png" alt="IPL Logo" className="h-6 w-auto" />
-            <span>© 2025 IPL Auction Portal</span>
+            <span>©  IPL Auction Portal</span>
           </div>
           <nav className="flex items-center gap-6">
             <button onClick={() => setLocation("/privacy-policy")} className="text-xs text-slate-400 hover:text-white transition-colors">
@@ -662,7 +656,7 @@ function RoomAuthGate() {
         <div className="max-w-7xl mx-auto px-4 sm:px-8 flex flex-col md:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-3 text-xs text-slate-400">
             <img src="/IPL-logo.png" alt="IPL Logo" className="h-6 w-auto" />
-            <span>© 2025 IPL Auction Portal</span>
+            <span>© IPL Auction Portal</span>
           </div>
           <nav className="flex items-center gap-6">
             <button onClick={() => setLocation("/privacy-policy")} className="text-xs text-slate-400 hover:text-white transition-colors">
