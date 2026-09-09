@@ -72,12 +72,6 @@ export function TournamentsPage() {
   const handleEnterRoom = async (tournament: Tournament, target: "public" | "auction" = "public") => {
     const canManageTournament = canManageRoom(tournament.created_by);
 
-    // Auction requires admin credentials — route non-admins to the login page.
-    if (target === "auction" && !canManageTournament) {
-      setLocation(`/login?next=/room/${encodeURIComponent(tournament.room_code)}/auction`);
-      return;
-    }
-
     if (tournament.is_private && target === "public") {
       const isUnlocked = sessionStorage.getItem(`room_unlocked_${tournament.id}`) === "true";
       if (!isUnlocked) {

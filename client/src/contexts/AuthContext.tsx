@@ -25,6 +25,7 @@ interface AuthContextType {
     password: string,
   ) => Promise<{ needsEmailConfirmation: boolean }>;
   logout: () => Promise<void>;
+  logoutRoomAdmin: () => void;
   grantRoomAdmin: (roomCode: string, adminPassword: string) => Promise<boolean>;
   isAdmin: boolean;
   isAuthenticated: boolean;
@@ -263,6 +264,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsMasterAdmin(false);
   };
 
+  const logoutRoomAdmin = (): void => {
+    // Only clear room-specific sessionStorage, keep website admin session intact.
+    try {
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const key = sessionStorage.key(i);
+        if (key?.startsWith("room_")) {
+          sessionStorage.removeItem(key);
+        }
+      }
+    } catch {
+      // ignore
+    }
+    // Clear scoped tournament state
+    setScopedTournamentId(null);
+  };
+
   const grantRoomAdmin = async (roomCode: string, adminPassword: string): Promise<boolean> => {
     const roomAuth = await supabaseService.verifyRoomAdminCredentials(roomCode, adminPassword);
     if (!roomAuth.success || !roomAuth.tournament) return false;
@@ -302,6 +319,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         signUp,
         logout,
+        logoutRoomAdmin,
         grantRoomAdmin,
         isAdmin: role === "admin",
         isAuthenticated: !!user && !!role,
