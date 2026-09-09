@@ -65,13 +65,9 @@ export function AuthLayout({
           className="w-full max-w-md"
         >
           <div className="relative rounded-2xl bg-[#18184a]/90 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden">
-            <div className="relative">
-              <div className="h-1.5 bg-gradient-to-r from-[#fe6804] via-[#ef4123] to-[#fe6804]" />
-              <div className="absolute left-1/2 -translate-x-1/2 top-1.5 w-32 h-[3px] bg-white/40 blur-[2px]" />
-            </div>
             <div className="p-6 sm:p-8">
               <div className="text-center mb-8">
-                <div className="mt-4 flex justify-center">{cardBadge}</div>
+                <div className="flex justify-center">{cardBadge}</div>
                 {eyebrow && (
                   <p className="text-[#fe6804] text-[11px] font-semibold uppercase tracking-[0.25em] mt-5 mb-2">
                     {eyebrow}

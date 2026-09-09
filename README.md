@@ -29,7 +29,7 @@ Built by ISTE for the IPL 2025 Mega Auction.
 
 ## Overview
 
-The IPL 2025 Player Auction Dashboard lets an auctioneer, organizers, and viewers manage and watch a franchise auction in real time. Administrators can create tournament "rooms", register teams, import players, run the auction, and track budgets — while the public dashboard shows live team cards, sold/unsold player pools, a leaderboard, and Playing XI selection.
+The IPL Player Auction Dashboard lets an auctioneer, organizers, and viewers manage and watch a franchise auction in real time. Administrators can create tournament "rooms", register teams, import players, run the auction, and track budgets — while the public dashboard shows live team cards, sold/unsold player pools, a leaderboard, and Playing XI selection.
 
 Every tournament room is fully isolated (multi-tenancy), so a single deployment can host multiple independent auctions.
 
@@ -147,7 +147,7 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key_here
 Open the **SQL Editor** in your Supabase project, paste the contents of
 [`supabase-schema.sql`](./supabase-schema.sql), and run it. This creates all tables,
 indexes, triggers, RLS policies, realtime subscriptions, storage buckets, and seeds the
-default IPL 2025 tournament with 12 teams.
+default IPL tournament with 12 teams.
 
 ### 4. Run the App
 
