@@ -118,7 +118,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
           await supabaseService.cloneTournamentStructure(1, created.id, {
             copyTeams: true,
             copyPools: true,
-            copyPlayers: true,
+            copyPlayers: false,
             copyRules: true,
           });
         } catch (cloneErr) {

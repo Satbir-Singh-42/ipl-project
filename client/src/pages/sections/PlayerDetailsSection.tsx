@@ -441,8 +441,9 @@ export const PlayerDetailsSection = (): JSX.Element => {
                       <button
                         type="button"
                         className="h-auto px-2 sm:px-2.5 lg:px-2 xl:px-2.5 2xl:px-3.5 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-[11px] xl:text-xs font-semibold tracking-wide transition-all duration-200 whitespace-nowrap active:scale-95 bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30 hover:text-white"
-                        onClick={() => {
-                          logoutRoomAdmin();
+                        onClick={async () => {
+                          await logout();
+                          setLocation("/");
                         }}>
                         LOGOUT
                       </button>

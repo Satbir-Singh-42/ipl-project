@@ -461,23 +461,23 @@ CREATE POLICY "Public player images access" ON storage.objects FOR SELECT USING 
 DROP POLICY IF EXISTS "Public team logos access" ON storage.objects;
 CREATE POLICY "Public team logos access" ON storage.objects FOR SELECT USING (bucket_id = 'team-logos');
 
-DROP POLICY IF EXISTS "Authenticated users can upload player images" ON storage.objects;
-CREATE POLICY "Authenticated users can upload player images" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'player-images');
+DROP POLICY IF EXISTS "Allow upload player images" ON storage.objects;
+CREATE POLICY "Allow upload player images" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'player-images');
 
-DROP POLICY IF EXISTS "Authenticated users can update player images" ON storage.objects;
-CREATE POLICY "Authenticated users can update player images" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'player-images');
+DROP POLICY IF EXISTS "Allow update player images" ON storage.objects;
+CREATE POLICY "Allow update player images" ON storage.objects FOR UPDATE USING (bucket_id = 'player-images');
 
-DROP POLICY IF EXISTS "Authenticated users can delete player images" ON storage.objects;
-CREATE POLICY "Authenticated users can delete player images" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'player-images');
+DROP POLICY IF EXISTS "Allow delete player images" ON storage.objects;
+CREATE POLICY "Allow delete player images" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'player-images');
 
-DROP POLICY IF EXISTS "Authenticated users can upload team logos" ON storage.objects;
-CREATE POLICY "Authenticated users can upload team logos" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'team-logos');
+DROP POLICY IF EXISTS "Allow upload team logos" ON storage.objects;
+CREATE POLICY "Allow upload team logos" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'team-logos');
 
-DROP POLICY IF EXISTS "Authenticated users can update team logos" ON storage.objects;
-CREATE POLICY "Authenticated users can update team logos" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'team-logos');
+DROP POLICY IF EXISTS "Allow update team logos" ON storage.objects;
+CREATE POLICY "Allow update team logos" ON storage.objects FOR UPDATE USING (bucket_id = 'team-logos');
 
-DROP POLICY IF EXISTS "Authenticated users can delete team logos" ON storage.objects;
-CREATE POLICY "Authenticated users can delete team logos" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'team-logos');
+DROP POLICY IF EXISTS "Allow delete team logos" ON storage.objects;
+CREATE POLICY "Allow delete team logos" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'team-logos');
 
 
 -- SEED 12 TEAMS (TOURNAMENT 1)

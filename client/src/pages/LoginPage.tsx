@@ -46,7 +46,7 @@ export function LoginPage() {
     <AuthLayout
       eyebrow="Welcome Back"
       title="Sign In to IPL Auction Portal"
-      subtitle="Access the admin console or run a room's auction."
+      subtitle="Access the admin console."
       cardBadge={
         <div className="w-16 h-16 rounded-2xl bg-[#fe6804]/15 border border-[#fe6804]/40 shadow-[0_0_30px_rgba(254,104,4,0.25)] flex items-center justify-center">
           <LogIn className="w-8 h-8 text-[#fe6804]" />
@@ -55,13 +55,13 @@ export function LoginPage() {
     >
       <form onSubmit={handleSubmit} className="space-y-5">
         <AuthField
-          label="Username / Email / Room Code"
+          label="Username / Email"
           icon={KeyRound}
           value={email}
           onChange={setEmail}
-          placeholder="admin or room code or you@example.com"
+          placeholder="admin or you@example.com"
           autoComplete="username"
-          hint="Use your admin credentials, room code, or email to sign in."
+          hint="Use your admin credentials or email to sign in."
         />
 
         <AuthField

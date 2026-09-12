@@ -185,38 +185,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // 2. Room-Specific Admin Host Login via Room Code + Room Admin Password
-    const roomAuth = await supabaseService.verifyRoomAdminCredentials(cleanId, cleanPass);
-    if (roomAuth.success && roomAuth.tournament) {
-      const target = roomAuth.tournament;
-      const sessionData = {
-        id: `room_admin_${target.id}`,
-        role: "admin" as UserRole,
-        displayName: `${target.name} Host`,
-        email: `${target.room_code.toLowerCase()}@admin.local`,
-        isMasterAdmin: false,
-        tournamentId: target.id,
-      };
-      localStorage.setItem("ipl_custom_auth_session", JSON.stringify(sessionData));
-      supabaseService.setActiveTournamentId(target.id);
-      setUser({ id: `room_admin_${target.id}`, email: sessionData.email } as User);
-      setRole("admin");
-      setDisplayName(`${target.name} Host`);
-      setIsMasterAdmin(false);
-      setScopedTournamentId(target.id);
-      return;
+    // 2. Supabase Auth User with Username or Email lookup
+    let targetEmail = cleanId;
+    if (!targetEmail.includes("@")) {
+      try {
+        const { data: userMeta } = await supabase
+          .from("users_meta")
+          .select("email")
+          .or(`username.ilike.${cleanId},display_name.ilike.${cleanId}`)
+          .maybeSingle();
+
+        if (userMeta?.email) {
+          targetEmail = userMeta.email;
+        }
+      } catch {
+        // ignore and fallback
+      }
     }
 
-    // 3. Supabase Auth User Fallback (Only attempted if identifier is in email format)
-    if (cleanId.includes("@")) {
+    if (targetEmail.includes("@")) {
       try {
         const { error } = await supabase.auth.signInWithPassword({
-          email: cleanId,
+          email: targetEmail,
           password: cleanPass,
         });
 
         if (error) {
-          throw new Error("Invalid email or password.");
+          throw new Error("Invalid email/username or password.");
         }
         return;
       } catch (err: unknown) {
@@ -225,8 +220,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // If identifier is not an email and direct checks failed
-    throw new Error("Invalid username/room code or password.");
+    throw new Error("Invalid username/email or password.");
   };
 
   const signUp = async (
@@ -251,6 +245,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // stale session can be restored on the next page load.
     try {
       localStorage.removeItem("ipl_custom_auth_session");
+      if (typeof window !== "undefined") {
+        for (let i = sessionStorage.length - 1; i >= 0; i--) {
+          const key = sessionStorage.key(i);
+          if (key?.startsWith("room_")) {
+            sessionStorage.removeItem(key);
+          }
+        }
+      }
     } catch {
       // ignore
     }
@@ -264,20 +266,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsMasterAdmin(false);
   };
 
-  const logoutRoomAdmin = (): void => {
-    // Only clear room-specific sessionStorage, keep website admin session intact.
-    try {
-      for (let i = sessionStorage.length - 1; i >= 0; i--) {
-        const key = sessionStorage.key(i);
-        if (key?.startsWith("room_")) {
-          sessionStorage.removeItem(key);
-        }
-      }
-    } catch {
-      // ignore
-    }
-    // Clear scoped tournament state
-    setScopedTournamentId(null);
+  const logoutRoomAdmin = async (): Promise<void> => {
+    await logout();
   };
 
   const grantRoomAdmin = async (roomCode: string, adminPassword: string): Promise<boolean> => {

@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabaseService } from "@/services/supabaseService";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { LoadingPage } from "@/components/LoadingPage";
 
 interface RoomAccessGuardProps {
   children: React.ReactNode;
@@ -19,13 +20,21 @@ interface RoomAccessGuardProps {
 export function RoomAccessGuard({ children, mode = "view" }: RoomAccessGuardProps) {
   const [, setLocation] = useLocation();
   const { currentTournament } = useTournament();
-  const { isAuthenticated, isAdmin, role, grantRoomAdmin } = useAuth();
+  const { isAdmin, grantRoomAdmin, isLoading: isAuthLoading } = useAuth();
   const { toast } = useToast();
 
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isUnlockedState, setIsUnlockedState] = useState(false);
+
+  // Wait for AuthContext to finish reading the session from localStorage/Supabase
+  // before deciding to show the password prompt. Without this, a global admin
+  // whose session is stored in localStorage would see the password prompt during
+  // the async init phase (role is null briefly), then get let through moments later.
+  if (isAuthLoading) {
+    return <LoadingPage />;
+  }
 
   if (!currentTournament) {
     return <>{children}</>;
@@ -35,12 +44,8 @@ export function RoomAccessGuard({ children, mode = "view" }: RoomAccessGuardProp
   const isPrivate = !!currentTournament.is_private;
   const isAdminMode = mode === "admin";
 
-  // Already an admin for this room (session) — any mode passes.
-  const isAdminSession =
-    typeof window !== "undefined" &&
-    sessionStorage.getItem(`room_admin_${tId}`) === "true";
-
-  if (isAdmin || isAdminSession) {
+  // If user is already an admin, permit access in any mode
+  if (isAdmin) {
     return <>{children}</>;
   }
 
@@ -125,13 +130,6 @@ export function RoomAccessGuard({ children, mode = "view" }: RoomAccessGuardProp
             {description}
           </p>
 
-          {isAuthenticated && (
-            <p className="text-[11px] text-zinc-400 mb-3">
-              Signed in as {role === "admin" ? "Admin" : "User"} — {isAdminMode
-                ? "but admins must still enter this room's admin password."
-                : "but private rooms still need their password to view."}
-            </p>
-          )}
         </div>
 
         <form onSubmit={handleUnlock} className="space-y-4">

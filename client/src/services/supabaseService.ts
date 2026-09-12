@@ -1089,8 +1089,19 @@ class SupabaseService {
 
   async addPlayer(player: Partial<DBPlayer>, tournamentId?: number): Promise<void> {
     const tId = tournamentId ?? player.tournament_id ?? this.activeTournamentId;
+    let finalImageUrl = player.image_url ? player.image_url.trim() : null;
+
+    if (
+      finalImageUrl &&
+      (finalImageUrl.startsWith("http://") || finalImageUrl.startsWith("https://")) &&
+      !finalImageUrl.includes("supabase.co/storage/v1/object/public/")
+    ) {
+      finalImageUrl = await this.uploadImageFromUrl("player-images", finalImageUrl);
+    }
+
     const { error } = await supabase.from("players").insert({
       ...player,
+      image_url: finalImageUrl,
       tournament_id: tId,
     });
     if (error) throw new Error(`Failed to add player: ${error.message}`);
@@ -1102,9 +1113,23 @@ class SupabaseService {
     tournamentId?: number,
   ): Promise<void> {
     const tId = tournamentId ?? this.activeTournamentId;
+    const payload: Partial<DBPlayer> = { ...data };
+
+    if (payload.image_url !== undefined) {
+      let finalImageUrl = payload.image_url ? payload.image_url.trim() : null;
+      if (
+        finalImageUrl &&
+        (finalImageUrl.startsWith("http://") || finalImageUrl.startsWith("https://")) &&
+        !finalImageUrl.includes("supabase.co/storage/v1/object/public/")
+      ) {
+        finalImageUrl = await this.uploadImageFromUrl("player-images", finalImageUrl);
+      }
+      payload.image_url = finalImageUrl;
+    }
+
     const { error } = await supabase
       .from("players")
-      .update(data)
+      .update(payload)
       .eq("id", id)
       .eq("tournament_id", tId);
     if (error) throw new Error(`Failed to update player: ${error.message}`);
@@ -1155,7 +1180,7 @@ class SupabaseService {
     team: {
       name: string;
       slug?: string;
-      logo_url?: string;
+      logo_url?: string | null;
       border_color?: string;
       bg_gradient?: string;
       starting_budget?: number;
@@ -1171,11 +1196,20 @@ class SupabaseService {
             .replace(/[^a-z0-9]+/g, "-")
             .replace(/(^-|-$)/g, "");
 
+    let finalLogoUrl = team.logo_url ? team.logo_url.trim() : null;
+    if (
+      finalLogoUrl &&
+      (finalLogoUrl.startsWith("http://") || finalLogoUrl.startsWith("https://")) &&
+      !finalLogoUrl.includes("supabase.co/storage/v1/object/public/")
+    ) {
+      finalLogoUrl = await this.uploadImageFromUrl("team-logos", finalLogoUrl);
+    }
+
     const { error } = await supabase.from("teams").insert({
       tournament_id: tId,
       name: team.name.trim(),
       slug,
-      logo_url: team.logo_url || null,
+      logo_url: finalLogoUrl || null,
       border_color: team.border_color || "#fe6804",
       bg_gradient:
         team.bg_gradient ||
@@ -1190,7 +1224,7 @@ class SupabaseService {
     slug: string,
     updates: {
       name?: string;
-      logo_url?: string;
+      logo_url?: string | null;
       border_color?: string;
       bg_gradient?: string;
       starting_budget?: number;
@@ -1198,9 +1232,29 @@ class SupabaseService {
     tournamentId?: number,
   ): Promise<void> {
     const tId = tournamentId ?? this.activeTournamentId;
+    const payload: {
+      name?: string;
+      logo_url?: string | null;
+      border_color?: string;
+      bg_gradient?: string;
+      starting_budget?: number;
+    } = { ...updates };
+
+    if (payload.logo_url !== undefined) {
+      let finalLogoUrl = payload.logo_url ? payload.logo_url.trim() : null;
+      if (
+        finalLogoUrl &&
+        (finalLogoUrl.startsWith("http://") || finalLogoUrl.startsWith("https://")) &&
+        !finalLogoUrl.includes("supabase.co/storage/v1/object/public/")
+      ) {
+        finalLogoUrl = await this.uploadImageFromUrl("team-logos", finalLogoUrl);
+      }
+      payload.logo_url = finalLogoUrl;
+    }
+
     const { error } = await supabase
       .from("teams")
-      .update(updates)
+      .update(payload)
       .eq("slug", slug)
       .eq("tournament_id", tId);
 
@@ -1257,13 +1311,14 @@ class SupabaseService {
     bucket: "player-images" | "team-logos",
     file: File,
   ): Promise<string> {
-    const ext = file.name.split(".").pop() || "png";
-    const filename = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
+    const ext = (file.name.split(".").pop() || "png").toLowerCase();
+    const cleanExt = ["jpg", "jpeg", "png", "webp", "svg"].includes(ext) ? ext : "png";
+    const filename = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt}`;
     const filePath = `${filename}`;
 
     const { error: uploadError } = await supabase.storage
       .from(bucket)
-      .upload(filePath, file, { cacheControl: "3600", upsert: true });
+      .upload(filePath, file, { cacheControl: "31536000, public", upsert: true });
 
     if (uploadError) {
       throw new Error(`Upload to ${bucket} failed: ${uploadError.message}`);
@@ -1286,10 +1341,9 @@ class SupabaseService {
     }
 
     try {
-      // Abort the external fetch if it takes too long so a slow/unreachable
-      // image host never blocks the import (falls back to the original URL).
+      // Abort external fetch if it takes longer than 6 seconds
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
+      const timeout = setTimeout(() => controller.abort(), 6000);
       let response: Response;
       try {
         response = await fetch(trimmed, { signal: controller.signal });
@@ -1311,7 +1365,7 @@ class SupabaseService {
       const filename = `url-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
       const { error: uploadError } = await supabase.storage
         .from(bucket)
-        .upload(filename, blob, { contentType, cacheControl: "3600", upsert: true });
+        .upload(filename, blob, { contentType, cacheControl: "31536000, public", upsert: true });
 
       if (uploadError) {
         console.warn(`Failed to store external image in bucket ${bucket}:`, uploadError.message);
@@ -1861,30 +1915,18 @@ class SupabaseService {
       return "Batsman";
     };
 
-    // Only re-host external images when a real Supabase session exists. Room-
-    // admin sessions (room code + admin password) have no JWT, so storage
-    // uploads would fail anyway — re-hosting them would just stall the import.
-    let resolvedImages: (string | null | undefined)[] = players.map((p) => p.image_url?.trim() || null);
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session) {
-        resolvedImages = await mapLimit(players, 6, async (p) => {
-          const raw = p.image_url?.trim() || null;
-          if (
-            raw &&
-            (raw.startsWith("http://") || raw.startsWith("https://")) &&
-            !raw.includes("supabase.co/storage/v1/object/public/")
-          ) {
-            return this.uploadImageFromUrl("player-images", raw);
-          }
-          return raw;
-        });
+    // Re-host external images into Supabase Storage bucket in parallel
+    const resolvedImages = await mapLimit(players, 6, async (p) => {
+      const raw = p.image_url?.trim() || null;
+      if (
+        raw &&
+        (raw.startsWith("http://") || raw.startsWith("https://")) &&
+        !raw.includes("supabase.co/storage/v1/object/public/")
+      ) {
+        return this.uploadImageFromUrl("player-images", raw);
       }
-    } catch {
-      // No session / unreadable — keep original URLs, import must not stall.
-    }
+      return raw;
+    });
 
     // Build clean rows first, then insert in chunks (much faster than one-by-
     // one round trips for large rosters).

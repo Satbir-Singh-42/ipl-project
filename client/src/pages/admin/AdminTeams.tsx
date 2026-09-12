@@ -202,17 +202,12 @@ export function AdminTeams() {
     try {
       if (editingTeam) {
         // UPDATE existing team
-        const { error } = await supabase
-          .from("teams")
-          .update({
-            name: teamForm.name.trim(),
-            logo_url: teamForm.logoUrl,
-            border_color: cleanBorder,
-            starting_budget: startingBudgetNum,
-          })
-          .eq("slug", editingTeam.teamId);
-
-        if (error) throw error;
+        await supabaseService.updateTeam(editingTeam.teamId, {
+          name: teamForm.name.trim(),
+          logo_url: teamForm.logoUrl,
+          border_color: cleanBorder,
+          starting_budget: startingBudgetNum,
+        });
         toast({ title: `Franchise "${teamForm.name}" updated successfully` });
       } else {
         // CREATE new team
@@ -223,15 +218,13 @@ export function AdminTeams() {
             .replace(/\s+/g, "-")
             .replace(/[^a-z0-9-]/g, "");
 
-        const { error } = await supabase.from("teams").insert({
+        await supabaseService.createTeam({
           name: teamForm.name.trim(),
-          slug: slug,
+          slug,
           logo_url: teamForm.logoUrl,
           border_color: cleanBorder,
           starting_budget: startingBudgetNum,
         });
-
-        if (error) throw error;
         toast({ title: `Franchise "${teamForm.name}" created successfully` });
       }
 
